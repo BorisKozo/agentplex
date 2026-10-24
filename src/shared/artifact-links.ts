@@ -1,11 +1,11 @@
 import type { IBuffer } from '@xterm/xterm';
-import { ARTIFACT_EXTENSIONS } from './artifact-formats';
+import { TEXT_EXTENSIONS } from './artifact-formats';
 
 export interface ArtifactReference { start: number; end: number; reference: string }
 
 export function findArtifactReferences(text: string): ArtifactReference[] {
   const results: ArtifactReference[] = [];
-  const extensions = Object.keys(ARTIFACT_EXTENSIONS).sort((a, b) => b.length - a.length).join('|');
+  const extensions = [...TEXT_EXTENSIONS].sort((a, b) => b.length - a.length).join('|');
   const extension = String.raw`\.(?:${extensions})(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)?`;
   const patterns = [
     new RegExp(String.raw`\[[^\]\r\n]+\]\(([^)\r\n]+${extension})\)`, 'gi'),
@@ -52,16 +52,4 @@ export function terminalArtifactReferences(buffer: IBuffer, columns: number, row
     const end = positions[link.end - 1]?.end;
     return start && end && start.y <= row && end.y >= row ? [{ reference: link.reference, range: { start, end } }] : [];
   });
-}
-
-export function resolveArtifactLink(documentPath: string, href: string): string {
-  if (/^[a-z]:[\\/]/i.test(href) || /^file:/i.test(href)) return href;
-  const normalized = documentPath.replace(/\\/g, '/');
-  return new URL(href, normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`).href;
-}
-
-export function artifactHtmlDocument(content: string): string {
-  return '<!doctype html><html><head><meta charset="utf-8">'
-    + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; font-src data:; form-action \'none\'; base-uri \'none\'">'
-    + '</head><body>' + content + '</body></html>';
 }

@@ -1,8 +1,6 @@
 import { ipcMain, dialog, shell, BrowserWindow, app, clipboard } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { createInterface } from 'node:readline';
-import Anthropic from '@anthropic-ai/sdk';
 import { IPC, CLI_TOOLS, RESUME_TOOL, COPILOT_RESUME_TOOL, type CliTool, type PinnedProject, type DrawingData, type WorkspaceTemplate, type PersistedGroups } from '../shared/ipc-channels';
 import { ensureGlobalConfig, ensureProjectConfig } from './config-loader';
 import { sessionManager } from './session-manager';
@@ -21,7 +19,6 @@ import {
 } from './copilot-session-scanner';
 import { searchSessions } from './session-search';
 import type { HistoryRequestKind } from '../shared/ipc-channels';
-import { summarizeWithCopilot } from './copilot-summary-proxy';
 import { getGitStatus, getFileDiff, saveFile, stageFile, unstageFile, stageAll, unstageAll, gitCommit, gitPush, gitPull, gitLog, gitBranchInfo } from './git-operations';
 import { listWorkspaceDirectory, readWorkspaceFile } from './workspace-files';
 
@@ -34,8 +31,6 @@ const VALID_CLI_IDS = new Set<string>([
 function isValidCli(id: string): boolean {
   return VALID_CLI_IDS.has(id) || getCachedShells().some((s) => s.id === id);
 }
-
-const MAX_CONTEXT_LENGTH = 100_000;
 
 export function registerIpcHandlers() {
   ipcMain.handle(IPC.CLIPBOARD_WRITE, (event, text: string) => {
@@ -154,143 +149,6 @@ export function registerIpcHandlers() {
   ipcMain.handle(IPC.SESSION_GET_CWD, (_event, { id }: { id: string }) => {
     if (typeof id !== 'string') return null;
     return sessionManager.getCwd(id);
-  });
-
-  ipcMain.handle(IPC.SUMMARIZE_CONTEXT, async (_event, { sessionId, sourceLabel }: { sessionId: string; sourceLabel: string }) => {
-    if (typeof sessionId !== 'string' || typeof sourceLabel !== 'string') {
-      return { summary: null, error: 'Invalid parameters' };
-    }
-    const safeLabel = sourceLabel.slice(0, 200);
-    const source = sessionManager.list().find(session => session.id === sessionId);
-    if (!source) return { summary: null, error: 'Source session no longer exists' };
-    const copilot = source.cli === 'copilot' || source.cli === 'copilot-resume';
-
-    // Read the full conversation from the JSONL file instead of the terminal buffer
-    const jsonlPath = sessionManager.getJsonlPath(sessionId);
-    let conversation = '';
-    let contextSource = 'JSONL';
-
-    if (jsonlPath) {
-      const input = fs.createReadStream(jsonlPath, { encoding: 'utf8' });
-      const lines = createInterface({ input, crlfDelay: Infinity });
-      try {
-        const addMessage = (message: string) => {
-          conversation = (conversation ? conversation + '\n\n' + message : message).slice(-MAX_CONTEXT_LENGTH);
-        };
-        for await (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const record = JSON.parse(line);
-            const type = record.type;
-            if (copilot) {
-              const data = record.data;
-              if (record.agentId || !data || typeof data !== 'object') continue;
-              if ((type === 'user.message' || type === 'assistant.message') && typeof data.content === 'string') {
-                addMessage(`[${type === 'user.message' ? 'User' : 'Assistant'}]\n${data.content}`);
-              } else if (type === 'tool.execution_start') {
-                const args = data.arguments;
-                const desc = args?.description || args?.command || args?.pattern || args?.query || '';
-                addMessage(`[Tool: ${typeof data.toolName === 'string' ? data.toolName : 'tool'}]` +
-                  (typeof desc === 'string' && desc ? ' ' + desc.slice(0, 200) : ''));
-              } else if (type === 'tool.execution_complete' && typeof data.result?.content === 'string') {
-                addMessage(`[Tool result: ${data.success === true ? 'success' : 'failure'}]\n${data.result.content}`);
-              }
-              continue;
-            }
-            const content = record.message?.content;
-            if (type !== 'user' && type !== 'assistant') continue;
-
-            if (type === 'user') {
-              if (typeof content === 'string') {
-                addMessage(`[User]\n${content}`);
-              } else if (Array.isArray(content)) {
-                for (const block of content) {
-                  if (block.type === 'text' && block.text) {
-                    addMessage(`[User]\n${block.text}`);
-                  }
-                }
-              }
-            } else if (type === 'assistant' && Array.isArray(content)) {
-              for (const block of content) {
-                if (block.type === 'text' && block.text) {
-                  addMessage(`[Assistant]\n${block.text}`);
-                } else if (block.type === 'tool_use') {
-                  const toolName = block.name || 'tool';
-                  const desc = block.input?.description || block.input?.command || block.input?.pattern || '';
-                  const preview = typeof desc === 'string' ? desc.slice(0, 200) : '';
-                  addMessage(`[Tool: ${toolName}]${preview ? ' ' + preview : ''}`);
-                }
-              }
-            }
-          } catch { /* skip malformed line */ }
-        }
-      } catch (err: any) {
-        console.warn(`[summarize] Could not read JSONL: ${err.message}`);
-      } finally {
-        lines.close();
-        input.destroy();
-      }
-    }
-
-    // Fall back to terminal buffer if JSONL is empty/unavailable
-    if (!conversation) {
-      const buffer = sessionManager.getBuffer(sessionId);
-      if (buffer) {
-        const { stripAnsi } = await import('../shared/ansi-strip');
-        conversation = stripAnsi(buffer).slice(-MAX_CONTEXT_LENGTH);
-        contextSource = 'terminal buffer';
-      }
-    }
-
-    if (!conversation) {
-      return { summary: null, error: 'No conversation data available' };
-    }
-
-    // Cap at MAX_CONTEXT_LENGTH for the API call
-    const safeContext = conversation.length > MAX_CONTEXT_LENGTH
-      ? conversation.slice(-MAX_CONTEXT_LENGTH)
-      : conversation;
-
-    console.log(`[summarize] Request for "${safeLabel}" — ${safeContext.length} chars from ${contextSource}`);
-
-    const prompt = `You are summarizing the full conversation of an AI coding assistant session called "${safeLabel}". This summary will be sent to another AI assistant session so it can understand what the source session has been working on.
-
-Summarize the following conversation concisely. Focus on:
-- What task/goal the session is working on
-- Key decisions made or approaches taken
-- Current state (what's done, what's in progress, any blockers)
-- Any important file paths, function names, or technical details
-
-Keep it under 2000 tokens. Be direct and factual.
-
-<conversation>
-${safeContext}
-</conversation>`;
-
-    try {
-      if (copilot) {
-        const { summary, model } = await summarizeWithCopilot(prompt);
-        console.log(`[summarize] Copilot success — ${summary.length} chars, model: ${model}`);
-        return { summary, error: null };
-      }
-      const apiKey = process.env.AGENTPLEX_API_KEY;
-      if (!apiKey) {
-        return { summary: null, error: 'AGENTPLEX_API_KEY not set. Set it to enable Haiku summarization.' };
-      }
-      const client = new Anthropic({ apiKey });
-      const response = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      const summary = response.content.filter(block => block.type === 'text').map(block => block.text).join('\n').trim();
-      if (!summary) throw new Error('Haiku returned an empty summary');
-      console.log(`[summarize] Success — ${summary.length} chars, usage: ${response.usage?.input_tokens}in/${response.usage?.output_tokens}out`);
-      return { summary, error: null };
-    } catch (err: any) {
-      console.error('[summarize] Failed:', err.message || err);
-      return { summary: null, error: err.message || 'Summarization failed' };
-    }
   });
 
   ipcMain.on(IPC.SESSION_UPDATE_STATE, (_event, { sessionId, displayName }: { sessionId: string; displayName: string }) => {

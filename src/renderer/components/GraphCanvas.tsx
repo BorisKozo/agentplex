@@ -5,6 +5,7 @@ import {
   Controls,
   Panel,
   useReactFlow,
+  useNodesInitialized,
   type OnNodeDrag,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -101,7 +102,9 @@ export function GraphCanvas() {
   }, [bumpViewportMove]);
 
   // Record pan/zoom once a move settles so it's saved with the layout, and apply a
-  // saved one when the layout is restored.
+  // saved one when the layout is restored. The saved one waits until every card is
+  // measured: that's when the `fitView` prop below fits the graph, and applying the
+  // saved viewport before it would be overridden.
   const setViewport = useAppStore((s) => s.setViewport);
   const onMoveEnd = useCallback((_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
     setViewport({ x: viewport.x, y: viewport.y, zoom: viewport.zoom });
@@ -110,11 +113,12 @@ export function GraphCanvas() {
   const restoredViewport = useAppStore((s) => s.restoredViewport);
   const clearRestoredViewport = useAppStore((s) => s.clearRestoredViewport);
   const { setViewport: applyViewport } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
   useEffect(() => {
-    if (!restoredViewport) return;
+    if (!restoredViewport || !nodesInitialized) return;
     applyViewport(restoredViewport);
     clearRestoredViewport();
-  }, [restoredViewport, applyViewport, clearRestoredViewport]);
+  }, [restoredViewport, nodesInitialized, applyViewport, clearRestoredViewport]);
 
   return (
     <div className="graph-canvas w-full h-full relative">

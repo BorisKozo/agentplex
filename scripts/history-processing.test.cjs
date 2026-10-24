@@ -207,7 +207,7 @@ test('history IPC isolates cancellation by window and scope, and propagates real
     './session-search': { searchSessions: operation },
     './claude-session-scanner': { scanProjects: signal => operation(null, signal) },
     './copilot-session-scanner': {}, './session-manager': {}, './shell-detector': {},
-    './settings-manager': {}, './config-loader': {}, './git-operations': {}, './copilot-summary-proxy': {},
+    './settings-manager': {}, './config-loader': {}, './git-operations': {},
   }).registerIpcHandlers();
   const first = Object.assign(new EventEmitter(), { id: 1 });
   const second = Object.assign(new EventEmitter(), { id: 2 });

@@ -5,14 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { loadSource } = require('./test-support.cjs');
-const { createPdf } = require('./pdf-fixture.cjs');
-const { createDocx, createXlsx, createDoc } = require('./office-fixtures.cjs');
-const { parseOfficePreview } = loadSource('src/main/office-preview-parser.ts');
-const { listWorkspaceDirectory, readWorkspaceFile } = loadSource('src/main/workspace-files.ts', {
-  './office-preview': { readOfficePreview: parseOfficePreview },
-});
-const { findArtifactReferences, resolveArtifactLink } = loadSource('src/shared/artifact-links.ts');
-const { terminalArtifactReferences } = loadSource('src/shared/artifact-links.ts');
+const { listWorkspaceDirectory, readWorkspaceFile } = loadSource('src/main/workspace-files.ts');
+const { findArtifactReferences, terminalArtifactReferences } = loadSource('src/shared/artifact-links.ts');
 
 function fixture(t) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentplex-files-'));
@@ -45,7 +39,6 @@ test('previews resolve file URLs, spaces and source locations; session artifacts
   const { root, outside } = fixture(t);
   for (const reference of ['report data.json:12:3', pathToFileURL(path.join(root, 'report data.json')).href + '#L12']) {
     const result = await readWorkspaceFile(root, reference);
-    assert.equal(result.kind, 'json');
     assert.equal(result.content, '{"message":"\u03bb"}');
   }
   const artifact = await readWorkspaceFile(root, path.join(outside, 'secret.json'), outside);
@@ -59,7 +52,8 @@ test('previews resolve file URLs, spaces and source locations; session artifacts
 test('previews reject unsupported, binary, invalid UTF-8, directory and oversized content explicitly', async t => {
   const { root } = fixture(t);
   for (const [name, data, expected] of [
-    ['unsupported.exe', 'text', /Unsupported preview/],
+    ['unsupported.exe', 'text', /Unsupported file type/],
+    ['document.pdf', '%PDF-1.4', /Unsupported file type/],
     ['binary.md', Buffer.from([0, 1, 2]), /Binary/],
     ['invalid.md', Buffer.from([255]), /UTF-8/],
     ['huge.json', 'x'.repeat(1024 * 1024 + 1), /1 MiB/],
@@ -71,120 +65,29 @@ test('previews reject unsupported, binary, invalid UTF-8, directory and oversize
   await assert.rejects(readWorkspaceFile(root, 'directory.md'), /regular file/);
 });
 
-test('CSV/TSV preserve quoting, multiline values and literals; large tables are explicitly limited', async t => {
+test('text, code, Markdown, HTML, CSV, JSON and Mermaid files are read as plain text, never interpreted', async t => {
   const { root } = fixture(t);
-  fs.writeFileSync(path.join(root, 'data.csv'), '\ufeffName,Notes,Formula\r\n"Last, First","line 1\nline 2",=1+1\r\nshort\r\n');
-  const csv = await readWorkspaceFile(root, 'data.csv');
-  assert.equal(csv.kind, 'table');
-  assert.deepEqual(csv.sheet.rows, [['Name', 'Notes', 'Formula'], ['Last, First', 'line 1\nline 2', '=1+1'], ['short']]);
-  fs.writeFileSync(path.join(root, 'data.tsv'), 'A\tB\n1\t2');
-  assert.deepEqual((await readWorkspaceFile(root, 'data.tsv')).sheet.rows, [['A', 'B'], ['1', '2']]);
-  fs.writeFileSync(path.join(root, 'large.csv'), ('x,'.repeat(110) + 'x\n').repeat(1002));
-  const large = (await readWorkspaceFile(root, 'large.csv')).sheet;
-  assert.equal(large.truncated, true);
-  assert.equal(large.rows.length, 200);
-  assert.equal(large.rows[0].length, 100);
-  fs.writeFileSync(path.join(root, 'bad.csv'), 'a,"unfinished');
-  await assert.rejects(readWorkspaceFile(root, 'bad.csv'), /Quote|quote/);
-});
-
-test('common text/code and Mermaid files are readable without interpreting their content', async t => {
-  const { root } = fixture(t);
-  for (const name of ['notes.txt', 'debug.log', 'config.yaml', 'source.ts', 'data.xml', 'events.jsonl', 'diagram.mmd', 'diagram.mermaid']) {
-    fs.writeFileSync(path.join(root, name), '<script>doNotExecute()</script>\nflowchart LR\nA-->B');
+  const content = '<script>doNotExecute()</script>\n# Title\n"Last, First",=1+1\nflowchart LR\nA-->B';
+  for (const name of ['notes.txt', 'debug.log', 'config.yaml', 'source.ts', 'data.xml', 'events.jsonl',
+    'readme.md', 'page.html', 'data.csv', 'data.tsv', 'broken.json', 'diagram.mmd', 'diagram.mermaid']) {
+    fs.writeFileSync(path.join(root, name), content);
     const file = await readWorkspaceFile(root, name);
-    assert.equal(file.kind, name.includes('diagram') ? 'mermaid' : 'text');
-    assert.match(file.content, /doNotExecute/);
+    assert.deepEqual(Object.keys(file).sort(), ['content', 'name', 'path']);
+    assert.equal(file.content, content, `${name} is returned byte for byte`);
     assert.equal(findArtifactReferences('Open `' + name + '`')[0]?.reference, name);
   }
   fs.writeFileSync(path.join(root, 'unicode.txt'), Buffer.concat([Buffer.from([255, 254]), Buffer.from('UTF16 λ', 'utf16le')]));
   assert.equal((await readWorkspaceFile(root, 'unicode.txt')).content, 'UTF16 λ');
 });
 
-test('Word DOCX structure is sanitized, legacy DOC text is extracted and XLSX sheets keep cached values', async t => {
-  const { root } = fixture(t);
-  fs.writeFileSync(path.join(root, 'report.docx'), await createDocx());
-  const docx = await readWorkspaceFile(root, 'report.docx');
-  assert.equal(docx.kind, 'document');
-  assert.equal(docx.format, 'html');
-  assert.match(docx.content, /<h1>Native Word preview<\/h1>/);
-  assert.match(docx.content, /<strong>Generated report &amp; evidence<\/strong>/);
-  assert.match(docx.content, /<table>/);
-  assert.doesNotMatch(docx.content, /href|javascript:|<script|<img/i);
-  fs.writeFileSync(path.join(root, 'legacy.doc'), createDoc());
-  const doc = await readWorkspaceFile(root, 'legacy.doc');
-  assert.equal(doc.kind, 'document');
-  assert.equal(doc.format, 'text');
-  assert.match(doc.content, /Legacy Word preview\nSynthetic evidence/);
-  fs.writeFileSync(path.join(root, 'book.xlsx'), await createXlsx());
-  const book = await readWorkspaceFile(root, 'book.xlsx');
-  assert.equal(book.kind, 'workbook');
-  assert.deepEqual(book.sheets.map(sheet => sheet.name), ['Summary', 'Details']);
-  assert.deepEqual(book.sheets[0].rows[2], ['Computed', '84']);
-  assert.deepEqual(book.sheets[0].rows[3], ['Uncached', '[Formula: no cached result]']);
-  assert.equal(book.sheets[0].rows[4][1].startsWith('=HYPERLINK'), true);
-  assert.equal(book.sheets[0].rows[5][1], 'Hello World');
-  assert.equal(book.sheets[0].rows[6][1], 'Visible link text');
-});
-
-test('Office parser rejects malformed and expanded oversized archives, with explicit workbook truncation', async () => {
-  const JSZip = require('jszip');
-  await assert.rejects(parseOfficePreview(Buffer.from('not word'), '.doc'), /legacy Word/);
-  for (const [offset, value] of [[30, 30], [44, 0x7fffffff]]) {
-    const invalidDoc = createDoc();
-    invalidDoc.writeUIntLE(value, offset, offset === 30 ? 2 : 4);
-    await assert.rejects(parseOfficePreview(invalidDoc, '.doc'), /compound-document header/);
-  }
-  await assert.rejects(parseOfficePreview(Buffer.from('not zip'), '.docx'));
-  const invalid = new JSZip();
-  invalid.file('word/document.xml', 'x'.repeat(40 * 1024 * 1024 + 1));
-  await assert.rejects(parseOfficePreview(await invalid.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }), '.docx'), /40 MiB/);
-  const large = await parseOfficePreview(await createXlsx(true), '.xlsx');
-  assert.equal(large.truncated, true);
-  assert.equal(large.sheets.length, 20);
-  assert.equal(large.sheets[0].truncated, true);
-  assert.ok(large.sheets.reduce((count, sheet) => count + sheet.rows.reduce((sum, row) => sum + row.length, 0), 0) <= 20000);
-});
-
-test('HTML preserves native layout but removes executable elements, refreshes and navigation attributes', async t => {
-  const { root } = fixture(t);
-  fs.writeFileSync(path.join(root, 'report.html'), '<style>h1{color:blue}</style><h1>Report</h1>'
-    + '<script>evil()</script><iframe src="https://example.invalid"></iframe><meta http-equiv="refresh" content="0;url=https://example.invalid">'
-    + '<a href="https://example.invalid" onclick="evil()">Read</a><svg><a xlink:href="https://example.invalid">SVG</a></svg>');
-  const file = await readWorkspaceFile(root, 'report.html');
-  assert.match(file.content, /<style>h1\{color:blue\}<\/style><h1>Report<\/h1>/);
-  assert.doesNotMatch(file.content, /script|iframe|meta|href|onclick|evil\(/i);
-});
-
-test('PDF reads preserve binary bytes and enforce signature, scope and the separate 20 MiB limit', async t => {
-  const { root, outside } = fixture(t);
-  const bytes = Buffer.concat([createPdf(), Buffer.from([0, 255, 128])]);
-  fs.writeFileSync(path.join(root, 'report.pdf'), bytes);
-  const file = await readWorkspaceFile(root, 'report.pdf');
-  assert.equal(file.kind, 'pdf');
-  assert.deepEqual(Buffer.from(file.base64, 'base64'), bytes);
-  fs.writeFileSync(path.join(root, 'invalid.pdf'), 'not a PDF');
-  await assert.rejects(readWorkspaceFile(root, 'invalid.pdf'), /valid PDF/);
-  const large = Buffer.alloc(20 * 1024 * 1024, 0);
-  large.write('%PDF-1.7\n');
-  fs.writeFileSync(path.join(root, 'large.pdf'), large);
-  assert.equal(Buffer.from((await readWorkspaceFile(root, 'large.pdf')).base64, 'base64').length, large.length);
-  fs.appendFileSync(path.join(root, 'large.pdf'), 'x');
-  await assert.rejects(readWorkspaceFile(root, 'large.pdf'), /20 MiB/);
-  fs.writeFileSync(path.join(outside, 'private.pdf'), bytes);
-  await assert.rejects(readWorkspaceFile(root, path.join(outside, 'private.pdf')), /outside/);
-  assert.deepEqual(Buffer.from((await readWorkspaceFile(root, 'files/private.pdf', outside)).base64, 'base64'), bytes);
-});
-
-test('terminal references include Markdown, quoted Windows paths, file URLs and source locations without web URLs', () => {
-  const text = '[report](reports/report data.md) `config.json:12:3` "C:\\My Files\\index.html" file:///C:/repo/data.json#L7 https://example.org/page.html [PDF](docs/my report.pdf) file:///C:/repo/report.PDF';
+test('terminal references include Markdown, quoted Windows paths, file URLs and source locations, but not web URLs or non-text files', () => {
+  const text = '[report](reports/report data.md) `config.json:12:3` "C:\\My Files\\index.html" file:///C:/repo/data.json#L7 https://example.org/page.html [PDF](docs/my report.pdf) file:///C:/repo/report.TXT';
   const links = findArtifactReferences(text);
   assert.deepEqual(links.map(link => link.reference), [
     'reports/report data.md', 'config.json:12:3', 'C:\\My Files\\index.html', 'file:///C:/repo/data.json#L7',
-    'docs/my report.pdf', 'file:///C:/repo/report.PDF',
+    'file:///C:/repo/report.TXT',
   ]);
   for (const link of links) assert.equal(text.slice(link.start, link.end), link.reference);
-  assert.equal(resolveArtifactLink('C:\\repo\\reports\\summary.md', '../data.json'), 'file:///C:/repo/data.json');
 });
 
 test('real xterm links span wrapped rows and retain correct cells after Unicode text', async t => {

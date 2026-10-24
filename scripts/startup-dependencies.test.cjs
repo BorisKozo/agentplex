@@ -57,7 +57,7 @@ async function cacheFixture(t) {
   let builds = 0;
   const build = async () => {
     builds++;
-    for (const name of ['build/main.js', 'build/preload.js', 'build/office-preview-worker.js', 'renderer/main_window/index.html']) {
+    for (const name of ['build/main.js', 'build/preload.js', 'renderer/main_window/index.html']) {
       const filename = path.join(root, '.vite', name);
       fs.mkdirSync(path.dirname(filename), { recursive: true });
       fs.writeFileSync(filename, `build ${builds}`);

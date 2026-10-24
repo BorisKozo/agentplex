@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, Sun, Moon, Columns2 } from 'lucide-react';
+import { ExternalLink, Sun, Moon, Columns2, PanelRight, PanelBottom } from 'lucide-react';
+import { useAppStore } from '../../store';
 
 export function getInitialTheme(): 'dark' | 'light' {
   const saved = localStorage.getItem('agentplex-theme');
@@ -18,6 +19,8 @@ export function SettingsPanel() {
     () => (document.documentElement.getAttribute('data-theme') as 'dark' | 'light') || 'dark'
   );
   const [splitPane, setSplitPane] = useState(() => getSplitPaneEnabled());
+  const panelPosition = useAppStore((s) => s.panelPosition);
+  const setPanelPosition = useAppStore((s) => s.setPanelPosition);
   const mountedRef = useRef(false);
 
   useEffect(() => {
@@ -78,6 +81,22 @@ export function SettingsPanel() {
         </div>
         <span className="text-[10px] text-fg-muted">
           {splitPane ? 'On' : 'Off'}
+        </span>
+      </button>
+
+      <button
+        onClick={() => setPanelPosition(panelPosition === 'side' ? 'bottom' : 'side')}
+        className="flex items-center justify-between w-full px-2.5 py-1.5 rounded-md bg-elevated hover:bg-border transition-colors cursor-pointer"
+        title="Open session panes beside the canvas, or below it stacked vertically"
+      >
+        <div className="flex items-center gap-2">
+          {panelPosition === 'side'
+            ? <PanelRight size={13} className="text-fg-muted" />
+            : <PanelBottom size={13} className="text-fg-muted" />}
+          <span className="text-xs text-fg">Panel position</span>
+        </div>
+        <span className="text-[10px] text-fg-muted">
+          {panelPosition === 'side' ? 'Side' : 'Bottom'}
         </span>
       </button>
 

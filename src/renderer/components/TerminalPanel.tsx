@@ -193,7 +193,7 @@ function TerminalPane({ sessionId }: { sessionId: string }) {
       )}
       {files.map(reference => <div key={reference} className="flex-1 min-h-0 overflow-hidden" style={{ display: terminalTab === `file:${reference}` ? undefined : 'none' }}>
         <Suspense fallback={<div className="p-4 text-fg-muted">Loading preview...</div>}>
-          <ArtifactPreview sessionId={sessionId} cwd={session?.cwd || ''} reference={reference} onOpenFile={openFile} />
+          <ArtifactPreview sessionId={sessionId} cwd={session?.cwd || ''} reference={reference} />
         </Suspense>
       </div>)}
       </div>
@@ -204,13 +204,15 @@ function TerminalPane({ sessionId }: { sessionId: string }) {
 
 export function TerminalPanel() {
   const openPanes = useAppStore((s) => s.openPanes);
+  // Below the canvas, panes stack top to bottom instead of side by side.
+  const stacked = useAppStore((s) => s.panelPosition === 'bottom');
 
   if (openPanes.length === 0) return null;
 
   return (
-    <div className="flex h-full bg-surface">
+    <div className={`terminal-panel flex h-full bg-surface ${stacked ? 'flex-col' : ''}`}>
       {openPanes.map((sessionId, idx) => (
-        <div key={sessionId} className="flex flex-1 min-w-0 h-full">
+        <div key={sessionId} className={`flex flex-1 min-w-0 min-h-0 ${stacked ? 'flex-col' : ''}`}>
           {idx > 0 && (
             <div className="flex-[0_0_1px] bg-border" />
           )}

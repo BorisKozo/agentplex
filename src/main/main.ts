@@ -3,7 +3,6 @@ import path from 'node:path';
 import { sessionManager } from './session-manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { detectShells } from './shell-detector';
-import { stopCopilotSummaries } from './copilot-summary-proxy';
 import { claimApplicationInstance } from './application-instance';
 import { installPreviewNavigation } from './preview-navigation';
 
@@ -277,13 +276,3 @@ app.on('window-all-closed', () => {
   }
 });
 
-let stoppingSummaries = false;
-app.on('before-quit', (event) => {
-  if (!ownsApplication) return;
-  if (stoppingSummaries) return;
-  event.preventDefault();
-  stoppingSummaries = true;
-  stopCopilotSummaries()
-    .catch(error => console.error('[summarize] Failed to stop Copilot proxy:', error))
-    .finally(() => app.quit());
-});

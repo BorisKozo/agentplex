@@ -14,7 +14,7 @@ function edgeCursor(dx: number, dy: number): string {
   return 'nesw-resize';
 }
 
-export const GroupNode = memo(function GroupNode({ data, id }: NodeProps) {
+export const GroupNode = memo(function GroupNode({ data, id, dragging }: NodeProps) {
   const nodeData = data as GroupNodeData;
   const color = nodeData.color || '#7aa2f7';
   const groupStyle: CSSProperties & { '--group-color': string } = { '--group-color': color };
@@ -169,6 +169,7 @@ export const GroupNode = memo(function GroupNode({ data, id }: NodeProps) {
       data-drop={dropHint}
       data-shared-directory={sharedDirectory ? 'true' : undefined}
       data-resizing={resizing ? 'true' : undefined}
+      data-dragging={dragging ? 'true' : undefined}
       title={sharedDirectory ? `Double-click to start a session in ${sharedDirectory}` : undefined}
       onDoubleClick={handleGroupDoubleClick}
     >

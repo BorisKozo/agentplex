@@ -160,10 +160,6 @@ const api = {
     return ipcRenderer.invoke(IPC.SESSION_RESTORE_ALL);
   },
 
-  summarizeContext: (sessionId: string, sourceLabel: string): Promise<{ summary: string | null; error: string | null }> => {
-    return ipcRenderer.invoke(IPC.SUMMARIZE_CONTEXT, { sessionId, sourceLabel });
-  },
-
   getDisplayNames: (): Promise<Record<string, string>> => {
     return ipcRenderer.invoke(IPC.DISPLAY_NAMES_GET);
   },

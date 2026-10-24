@@ -94,41 +94,20 @@ agentplex            # launch from anywhere
 
 To remove: `pnpm unlink --global agentplex`
 
-### Native file previews
+### Opening workspace files
 
-Open a file from the session workspace tree, or click a supported local file path
-in terminal output, to preview it in a read-only session tab. Markdown links can
-also open other local files within the session workspace.
+Open a file from the session workspace tree, or click a local file path in
+terminal output, to view it as read-only plain text in a session tab. Nothing is
+rendered or executed: Markdown, HTML, CSV, JSON and Mermaid files show their
+source text. Use **Reload** to pick up changes on disk.
 
-| Files | Preview |
-| --- | --- |
-| `.md`, `.markdown` | Formatted Markdown, tables and fenced Mermaid diagrams |
-| `.json` | Formatted JSON with explicit parse errors |
-| `.html`, `.htm` | Sandboxed HTML with scripts, navigation and network resources disabled |
-| `.pdf` | Native PDF reader with page navigation and zoom |
-| `.csv`, `.tsv` | Scrollable tables preserving quoted and multiline values |
-| `.docx` | Word headings, paragraphs, lists and tables; not exact page layout |
-| `.doc` | Legacy Word text, including headers, footers and notes; no original page layout |
-| `.xlsx` | Workbook sheet tabs and cell values; formulas show saved results and are never calculated |
-| `.mmd`, `.mermaid` | Locally rendered Mermaid diagram with a source toggle |
-| `.txt`, `.log`, `.yaml`, `.yml`, `.xml`, `.toml`, `.ini`, `.conf`, `.config`, `.jsonl`, `.ndjson` | Plain text |
-| Common source files (`.ts`, `.tsx`, `.js`, `.jsx`, `.py`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.cs`, `.css`, `.sql`, `.sh`, `.ps1`, etc.) | Read-only source text, never executed |
-
-Text files are limited to **1 MiB**, decoded as UTF-8 or BOM-marked UTF-16.
-PDF and Office input files are limited to **20 MiB**. Office conversion runs in
-bounded background workers with a 15-second timeout; ZIP-based Office documents
-are limited to 2,000 archive entries and 40 MiB of expanded content. Extracted
-Word output is limited to 2 MiB.
-
-Table previews show at most 1,000 rows and 100 columns per sheet, 20 sheets and
-20,000 cells total; a notice identifies truncated previews. Word images, embedded
-objects and active links are disabled. Encrypted documents and legacy `.xls`
-workbooks are not supported. Mermaid configuration directives, interactive links
-and network references are disabled; diagrams are limited to 50,000 characters
-and 500 edges. Unsupported, malformed and oversized files show an explicit error.
-
-Previews remain scoped to the selected workspace and that session's artifact
-directory. They do not require Microsoft Office or an external editor.
+Text and source files open, including `.txt`, `.log`, `.md`, `.json`, `.jsonl`,
+`.yaml`, `.xml`, `.toml`, `.ini`, `.html`, `.csv`, `.tsv`, `.mmd` and common code
+files (`.ts`, `.tsx`, `.js`, `.py`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.cs`,
+`.css`, `.sql`, `.sh`, `.ps1` and others). Files are limited to **1 MiB**, decoded
+as UTF-8 or BOM-marked UTF-16. Other file types, binary content and oversized
+files show an explicit error. Files stay scoped to the selected workspace and
+that session's artifact directory. To compare changes, use the session's Git tab.
 
 ## Dev Requirements
 
@@ -187,15 +166,14 @@ node scripts/run-git-editor-e2e.cjs send-dialog-e2e.cjs
 
 Available scripts: `git-editor-e2e.cjs`, `send-dialog-e2e.cjs`,
 `session-node-e2e.cjs`, `group-node-e2e.cjs`, `desktop-priorities-e2e.cjs`,
-`workspace-artifacts-e2e.cjs`, `terminal-rendering-smoke.cjs` and
-`copilot-runtime-smoke.cjs`.
+`workspace-artifacts-e2e.cjs` and `terminal-rendering-smoke.cjs`.
 
 ## Features
 
 - **Multi-session management** — run multiple Claude/Codex/Copilot CLI sessions side by side
 - **Graph canvas** — drag, arrange, and connect session nodes on a visual canvas
 - **HITL notifications** — get notified when a CLI session requires human input
-- **Cross-session messaging** — send messages between sessions with optional GitHub Copilot or Haiku summarization
+- **Cross-session messaging** — send an instruction to other sessions along with the source session's recent terminal output
 - **Duplicate Session** — fork a Claude session's conversation into a new session in the same directory
 - **Sub-agent tracking** — visualize spawned sub-agents via JSONL transcript tailing
 - **Plan & task visualization** — see plans and task lists rendered in the graph
@@ -204,6 +182,7 @@ Available scripts: `git-editor-e2e.cjs`, `send-dialog-e2e.cjs`,
 - **Graphite dark / Stone light** — muted paired themes for the graph, explorers, and toolbar
 - **Groups** — gather sessions into colored circles by dragging; the target circle highlights blue (join) or red (leave) before you drop. When every session in a group works in the same directory, the directory is shown under the group name, and double-clicking inside the circle starts a new session there. Right-click the colored dot next to a group's name to pick its color
 - **Inline rename** — double-click any node to rename it
+- **Panel position** — open session panes beside the canvas (side by side) or below it (stacked top to bottom), from **Settings → Panel position**; the choice persists across launches
 
 Switch between Graphite and Stone in **Settings**; your choice persists across
 launches. Terminal output and Git diff editors remain dark in both themes to
@@ -219,36 +198,11 @@ preserve CLI and code readability.
 > waiting sessions use a diamond indicator, and the graph dock provides zoom and
 > fit controls. Hover or keyboard-focus a card to reveal its actions.
 
-## Configuration
-
-### Cross-session summarization (optional)
-
-When the source session is Copilot, summarization uses an enabled low-cost model from your GitHub Copilot account through an isolated inference-only SDK proxy. Authenticate with `gh auth login`, or supply `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`. Copilot CLI must be installed. No Anthropic API key or HTTP proxy listener is required; Copilot account usage charges apply.
-
-For other source CLIs, enable Haiku summarization by setting your Anthropic API key using `AGENTPLEX_API_KEY` (not `ANTHROPIC_API_KEY`, which would conflict with Claude CLI's auth).
-
-**Set it persistently (recommended):**
-
-```bash
-export AGENTPLEX_API_KEY=sk-ant-...       # macOS/Linux (~/.bashrc or ~/.zshrc)
-set AGENTPLEX_API_KEY=sk-ant-...          # Windows (cmd)
-$env:AGENTPLEX_API_KEY="sk-ant-..."       # Windows (PowerShell)
-```
-
-**Or inline when launching from source:**
-
-```bash
-AGENTPLEX_API_KEY=sk-ant-... pnpm start                          # macOS/Linux
-$env:AGENTPLEX_API_KEY="sk-ant-..."; pnpm start                  # Windows (PowerShell)
-```
-
-Without summarization credentials, cross-session messaging still works: uncheck summarization to send raw terminal context. Summary failures are shown in the send dialog and do not silently broadcast raw context. Summaries use the provider's persisted conversation, falling back to the terminal buffer when no conversation is available.
-
 ## Usage
 
 1. **Create sessions** — click "+ New Session" and pick a working directory
 2. **Arrange nodes** — drag session nodes freely on the canvas. The layout is saved automatically after every change (card and group positions, group names, colors and sizes, and the canvas pan and zoom) and comes back the same way after a restart
-3. **Group** — drop a session onto another ungrouped session to form a group, or onto a group's circle to join it; drag a member outside the circle to remove it. While you drag, the circle shows what releasing will do: a blue outline means the session joins that group, a red outline means it leaves. If all of a group's sessions share one working directory, that directory appears under the group's name (hover it for the full path), and double-clicking an empty spot inside the circle starts a new session in that directory at that spot and adds it to the group. The new session uses the CLI all the members use (a resumed Claude or Copilot session counts as Claude or Copilot), or Claude if they differ. Double-clicking the group's name still renames it. To recolor a group, right-click the dot next to its name and choose a palette color or a custom one; the color is saved with the group. To resize a group, drag its circle's edge: the circle grows or shrinks around its center, the sessions stay put, and the group stops auto-fitting to its members. Backspace and Delete never remove nodes from the canvas
+3. **Group** — drop a session onto another ungrouped session to form a group, or onto a group's circle to join it; drag a member outside the circle to remove it. While you drag, the circle shows what releasing will do: a blue outline means the session joins that group, a red outline means it leaves. A group you're dragging fills with its own color so you can tell which one is moving. If all of a group's sessions share one working directory, that directory appears under the group's name (hover it for the full path), and double-clicking an empty spot inside the circle starts a new session in that directory at that spot and adds it to the group. The new session uses the CLI all the members use (a resumed Claude or Copilot session counts as Claude or Copilot), or Claude if they differ. Double-clicking the group's name still renames it. To recolor a group, right-click the dot next to its name and choose a palette color or a custom one; the color is saved with the group. To resize a group, drag its circle's edge: the circle grows or shrinks around its center, the sessions stay put, and the group stops auto-fitting to its members. Backspace and Delete never remove nodes from the canvas
 4. **Rename** — double-click a node label to rename it
 5. **Send messages** — hover a node, click the send icon to share context with another session. The icon is disabled until another live, writable session is open; read-only discovered CLIs can't receive messages
 6. **Duplicate** — hover a Claude node and click the Duplicate Session icon. The new session continues from a copy of the conversation (`claude --resume <id> --fork-session`) and the original is left unchanged. A session with no conversation yet opens an empty Claude session in the same directory. If the original is in a group, the copy joins that group
@@ -305,7 +259,6 @@ agentplex/
 │   │   ├── copilot-session-scanner.ts # Copilot project/session discovery and transcript rendering
 │   │   ├── copilot-session-discovery.ts # Finds Copilot CLIs running outside AgentPlex
 │   │   ├── copilot-lifecycle.ts       # Copilot running/idle/needs-attention state from events
-│   │   ├── copilot-summary-proxy.ts   # Copilot-backed summaries for cross-session messages
 │   │   ├── config-loader.ts           # Claude launcher command and flags
 │   │   ├── settings-manager.ts        # Persisted app settings
 │   │   ├── shell-detector.ts          # Available shells and versions
@@ -313,8 +266,7 @@ agentplex/
 │   │   ├── session-search.ts          # Search across saved Claude/Copilot sessions
 │   │   ├── history-reader.ts          # Chunked reads of large transcript files
 │   │   ├── workspace-files.ts         # Workspace tree listing and scoped file reads
-│   │   ├── office-preview*.ts         # Sandboxed Word/Excel preview parsing in a worker
-│   │   └── preview-navigation.ts      # Blocks navigation from preview content
+│   │   └── preview-navigation.ts      # Blocks navigation away from the app page
 │   ├── preload/
 │   │   └── preload.ts                 # Context bridge (window.agentPlex)
 │   ├── renderer/
@@ -329,7 +281,7 @@ agentplex/
 │   │   │   ├── TerminalPanel.tsx      # xterm.js terminal panes
 │   │   │   ├── GitDiffPanel.tsx       # Monaco-based diff and commit panel
 │   │   │   ├── ProjectLauncher.tsx    # New/resume session launcher
-│   │   │   ├── WorkspaceExplorer.tsx, ArtifactPreview.tsx, *Preview.tsx
+│   │   │   ├── WorkspaceExplorer.tsx, ArtifactPreview.tsx (read-only text view)
 │   │   │   ├── Toolbar.tsx, ActivityBar.tsx, SidePanel.tsx, AttentionBox.tsx
 │   │   │   └── panels/                # Explorer, Search, Templates, Settings
 │   │   ├── hooks/                     # useTerminal, useViewportMenu
@@ -359,7 +311,6 @@ agentplex/
 | Terminal | [xterm.js](https://xtermjs.org/) |
 | State | [Zustand](https://zustand-demo.pmnd.rs/) |
 | PTY backend | [node-pty](https://github.com/microsoft/node-pty) |
-| Summarization | [Anthropic SDK](https://docs.anthropic.com/en/docs/sdks) (optional) |
 
 ## License
 

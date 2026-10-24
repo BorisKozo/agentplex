@@ -14,12 +14,7 @@ export function SendDialog() {
   const displayNames = useAppStore((s) => s.displayNames);
   const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
   const [instruction, setInstruction] = useState('');
-  const [summarize, setSummarize] = useState(true);
-  const [sending, setSending] = useState(false);
   const [contextPreview, setContextPreview] = useState('');
-  const [sendError, setSendError] = useState('');
-  const sendingRef = useRef(false);
-  const mountedRef = useRef(true);
   const instructionRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -31,11 +26,8 @@ export function SendDialog() {
     : sourceId;
 
   const allSelected = targetSessions.length > 0 && targetSessions.every((s) => selectedTargets.has(s.id));
-  const sourceCli = sourceId ? sessions[sourceId]?.cli : undefined;
-  const copilotSummary = sourceCli === 'copilot' || sourceCli === 'copilot-resume';
 
-  // Build a preview from the terminal buffer (just for display — the actual
-  // summarization reads the full JSONL on the main process side)
+  // The recent terminal output, sent as context along with the instruction
   useEffect(() => {
     if (!sourceId || !sessionBuffers[sourceId]) {
       setContextPreview('');
@@ -68,8 +60,6 @@ export function SendDialog() {
 
   useEffect(() => {
     instructionRef.current?.focus();
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
   }, []);
 
   const toggleTarget = useCallback((id: string) => {
@@ -92,40 +82,16 @@ export function SendDialog() {
     }
   }, [allSelected, targetSessions]);
 
-  const handleSend = useCallback(async () => {
-    if (selectedTargets.size === 0 || !instruction.trim() || sendingRef.current || !sourceId) return;
-    setSendError('');
-
-    let contextBlock = contextPreview;
-
-    if (summarize) {
-      setSending(true);
-      sendingRef.current = true;
-      try {
-        // Main process reads the full JSONL conversation and summarizes it
-        const result = await window.agentPlex.summarizeContext(sourceId, sourceLabel || 'session');
-        if (!mountedRef.current) return;
-        if (result.error || !result.summary) throw new Error(result.error || 'No summary returned');
-        contextBlock = result.summary;
-      } catch (error) {
-        if (!mountedRef.current) return;
-        const message = error instanceof Error ? error.message : String(error);
-        console.error('[send] Summarization failed:', message);
-        setSendError(`${message} Retry, or uncheck summarization to send the terminal preview.`);
-        return;
-      } finally {
-        setSending(false);
-        sendingRef.current = false;
-      }
-    }
+  const handleSend = useCallback(() => {
+    if (selectedTargets.size === 0 || !instruction.trim() || !sourceId) return;
 
     const message = [
       instruction.trim(),
       '',
-      '<summary_context>',
+      '<session_context>',
       `Context from ${sourceLabel}, another session instance of you:`,
-      contextBlock,
-      '</summary_context>',
+      contextPreview,
+      '</session_context>',
     ].join('\n');
 
     // Use bracketed paste so Claude CLI treats multi-line input as a single paste,
@@ -148,7 +114,7 @@ export function SendDialog() {
 
     setInstruction('');
     closeSendDialog();
-  }, [selectedTargets, instruction, sourceId, sourceLabel, contextPreview, summarize, closeSendDialog, flashMessageEdge]);
+  }, [selectedTargets, instruction, sourceId, sourceLabel, contextPreview, closeSendDialog, flashMessageEdge]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -182,13 +148,11 @@ export function SendDialog() {
 
   const selectedCount = selectedTargets.size;
   const totalCount = targetSessions.length;
-  const sendLabel = sending
-    ? 'Summarizing...'
-    : selectedCount === totalCount && totalCount > 1
-      ? `Broadcast to all (${totalCount})`
-      : selectedCount > 1
-        ? `Send to ${selectedCount}`
-        : 'Send';
+  const sendLabel = selectedCount === totalCount && totalCount > 1
+    ? `Broadcast to all (${totalCount})`
+    : selectedCount > 1
+      ? `Send to ${selectedCount}`
+      : 'Send';
 
   return (
     <div className="fixed inset-0 bg-backdrop flex items-center justify-center z-[1000]" onMouseDown={handleBackdropMouseDown} onMouseUp={handleBackdropMouseUp}>
@@ -246,19 +210,6 @@ export function SendDialog() {
           rows={3}
         />
 
-        <div className="mt-2.5">
-          <label className="inline-flex items-center gap-1.5 text-xs text-fg-muted cursor-pointer">
-            <input
-              type="checkbox"
-              className="accent-accent cursor-pointer"
-              checked={summarize}
-              onChange={(e) => setSummarize(e.target.checked)}
-            />
-            <span>{copilotSummary ? 'Summarize with GitHub Copilot' : 'Summarize with Haiku'}</span>
-          </label>
-          {copilotSummary && <p className="text-[10px] text-fg-muted mt-1">Uses an enabled low-cost Copilot model and GitHub authentication; no Anthropic API key needed.</p>}
-        </div>
-        {sendError && <p role="alert" className="text-xs mt-2 text-error">{sendError}</p>}
 
         <div className="flex justify-end gap-2 mt-3.5">
           <button className="py-1.5 px-3.5 bg-transparent border border-border-strong rounded-md text-fg text-[13px] cursor-pointer transition-colors hover:bg-border" onClick={closeSendDialog}>
@@ -267,9 +218,9 @@ export function SendDialog() {
           <button
             className="py-1.5 px-3.5 bg-accent text-surface border-none rounded-md text-[13px] font-semibold cursor-pointer transition-colors hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSend}
-            disabled={!instruction.trim() || selectedTargets.size === 0 || sending}
+            disabled={!instruction.trim() || selectedTargets.size === 0}
           >
-            {sending ? sendLabel : <><span>{sendLabel}</span> <CornerDownLeft size={13} className="inline -mt-px" /></>}
+            <span>{sendLabel}</span> <CornerDownLeft size={13} className="inline -mt-px" />
           </button>
         </div>
       </div>
