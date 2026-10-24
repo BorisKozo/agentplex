@@ -162,7 +162,10 @@ test('missing or ambiguous group UUIDs never fall back to reused transient IDs a
       const original = { groups: [{ label: 'Saved', color: '#abcdef', members: [{ sessionId: 'session-1', resumeSessionId: 'saved' }] }] };
       store.getState().restoreGroups(original);
       assert.ok(store.getState().nodes.every(n => !n.parentId));
-      assert.deepEqual(save(), original);
+      const saved = save();
+      assert.deepEqual(saved.groups, original.groups);
+      // The unmatched live cards are recorded as ungrouped, not folded into the group.
+      assert.deepEqual(saved.sessions.map(s => s.sessionId), live.map(info => info.id));
     });
   }
 });

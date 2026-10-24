@@ -23,7 +23,7 @@ function fixture(t) {
     'onSubagentSpawn', 'onSubagentComplete', 'onPlanEnter', 'onPlanExit', 'onTaskCreate',
     'onTaskUpdate', 'onTaskList', 'onAppWake']) api[name] = () => noop;
   const oldWindow = global.window;
-  global.window = { agentPlex: api };
+  global.window = { agentPlex: api, addEventListener: noop, removeEventListener: noop };
   const store = Object.assign(select => select(useAppStore.getState()), {
     getState: useAppStore.getState, setState: useAppStore.setState, subscribe: useAppStore.subscribe,
   });
