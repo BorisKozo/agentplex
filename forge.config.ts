@@ -16,7 +16,7 @@ const config: ForgeConfig = {
     onlyModules: ['__none__'],
   },
   hooks: {
-    packageAfterCopy: async (_config, buildPath, _electronVersion, platform, arch) => {
+    packageAfterCopy: async (_config, buildPath) => {
       // node-pty is marked external by Vite, so it's not in the bundle.
       // Copy it (with prebuilds) into the packaged app's node_modules.
       const path = await import('path');
@@ -28,11 +28,6 @@ const config: ForgeConfig = {
       } catch {
         // node-pty not found — skip
       }
-      const { execFile } = await import('node:child_process');
-      const { promisify } = await import('node:util');
-      await promisify(execFile)(process.execPath, [
-        path.join(process.cwd(), 'scripts', 'copy-copilot-runtime.cjs'), buildPath, platform, arch,
-      ]);
     },
   },
   makers: [

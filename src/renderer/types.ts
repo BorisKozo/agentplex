@@ -32,7 +32,6 @@ export interface AgentPlexAPI {
   onTaskList: (callback: (data: TaskListInfo) => void) => () => void;
   updateSessionState: (sessionId: string, displayName: string) => void;
   restoreAllSessions: () => Promise<{ info: SessionInfo; displayName: string }[]>;
-  summarizeContext: (sessionId: string, sourceLabel: string) => Promise<{ summary: string | null; error: string | null }>;
   getDisplayNames: () => Promise<Record<string, string>>;
   discoverExternal: () => Promise<ExternalSession[]>;
   adoptExternal: (sessionUuid: string, cwd: string, cli?: 'claude' | 'copilot') => Promise<SessionInfo>;

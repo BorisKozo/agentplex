@@ -187,15 +187,14 @@ node scripts/run-git-editor-e2e.cjs send-dialog-e2e.cjs
 
 Available scripts: `git-editor-e2e.cjs`, `send-dialog-e2e.cjs`,
 `session-node-e2e.cjs`, `group-node-e2e.cjs`, `desktop-priorities-e2e.cjs`,
-`workspace-artifacts-e2e.cjs`, `terminal-rendering-smoke.cjs` and
-`copilot-runtime-smoke.cjs`.
+`workspace-artifacts-e2e.cjs` and `terminal-rendering-smoke.cjs`.
 
 ## Features
 
 - **Multi-session management** — run multiple Claude/Codex/Copilot CLI sessions side by side
 - **Graph canvas** — drag, arrange, and connect session nodes on a visual canvas
 - **HITL notifications** — get notified when a CLI session requires human input
-- **Cross-session messaging** — send messages between sessions with optional GitHub Copilot or Haiku summarization
+- **Cross-session messaging** — send an instruction to other sessions along with the source session's recent terminal output
 - **Duplicate Session** — fork a Claude session's conversation into a new session in the same directory
 - **Sub-agent tracking** — visualize spawned sub-agents via JSONL transcript tailing
 - **Plan & task visualization** — see plans and task lists rendered in the graph
@@ -219,31 +218,6 @@ preserve CLI and code readability.
 > workspace. Click an image for the full-size view. Session cards show live state,
 > waiting sessions use a diamond indicator, and the graph dock provides zoom and
 > fit controls. Hover or keyboard-focus a card to reveal its actions.
-
-## Configuration
-
-### Cross-session summarization (optional)
-
-When the source session is Copilot, summarization uses an enabled low-cost model from your GitHub Copilot account through an isolated inference-only SDK proxy. Authenticate with `gh auth login`, or supply `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`. Copilot CLI must be installed. No Anthropic API key or HTTP proxy listener is required; Copilot account usage charges apply.
-
-For other source CLIs, enable Haiku summarization by setting your Anthropic API key using `AGENTPLEX_API_KEY` (not `ANTHROPIC_API_KEY`, which would conflict with Claude CLI's auth).
-
-**Set it persistently (recommended):**
-
-```bash
-export AGENTPLEX_API_KEY=sk-ant-...       # macOS/Linux (~/.bashrc or ~/.zshrc)
-set AGENTPLEX_API_KEY=sk-ant-...          # Windows (cmd)
-$env:AGENTPLEX_API_KEY="sk-ant-..."       # Windows (PowerShell)
-```
-
-**Or inline when launching from source:**
-
-```bash
-AGENTPLEX_API_KEY=sk-ant-... pnpm start                          # macOS/Linux
-$env:AGENTPLEX_API_KEY="sk-ant-..."; pnpm start                  # Windows (PowerShell)
-```
-
-Without summarization credentials, cross-session messaging still works: uncheck summarization to send raw terminal context. Summary failures are shown in the send dialog and do not silently broadcast raw context. Summaries use the provider's persisted conversation, falling back to the terminal buffer when no conversation is available.
 
 ## Usage
 
@@ -306,7 +280,6 @@ agentplex/
 │   │   ├── copilot-session-scanner.ts # Copilot project/session discovery and transcript rendering
 │   │   ├── copilot-session-discovery.ts # Finds Copilot CLIs running outside AgentPlex
 │   │   ├── copilot-lifecycle.ts       # Copilot running/idle/needs-attention state from events
-│   │   ├── copilot-summary-proxy.ts   # Copilot-backed summaries for cross-session messages
 │   │   ├── config-loader.ts           # Claude launcher command and flags
 │   │   ├── settings-manager.ts        # Persisted app settings
 │   │   ├── shell-detector.ts          # Available shells and versions
@@ -360,7 +333,6 @@ agentplex/
 | Terminal | [xterm.js](https://xtermjs.org/) |
 | State | [Zustand](https://zustand-demo.pmnd.rs/) |
 | PTY backend | [node-pty](https://github.com/microsoft/node-pty) |
-| Summarization | [Anthropic SDK](https://docs.anthropic.com/en/docs/sdks) (optional) |
 
 ## License
 

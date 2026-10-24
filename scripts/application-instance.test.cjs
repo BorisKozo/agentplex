@@ -49,11 +49,9 @@ test('secondary main startup cannot initialize sessions or flush another instanc
     './session-manager': { sessionManager: { start: () => starts++, stop: () => stops++ } },
     './ipc-handlers': { registerIpcHandlers: () => assert.fail('secondary registered IPC') },
     './shell-detector': {},
-    './copilot-summary-proxy': { stopCopilotSummaries: () => assert.fail('secondary blocked quit') },
   });
   await Promise.resolve();
   handlers.get('window-all-closed')();
-  handlers.get('before-quit')({ preventDefault: () => assert.fail('secondary prevented quit') });
   assert.equal(quits, 1);
   assert.equal(starts, 0);
   assert.equal(stops, 0);

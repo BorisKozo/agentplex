@@ -15,23 +15,14 @@ async function rendererTest(repositoryRoot) {
   const { useAppStore, isSendTarget } = loadSource('src/renderer/store.ts', {
     './components/panels/SettingsPanel': { getSplitPaneEnabled: () => false },
   });
-  const calls = [], writes = [];
-  let resolveSummary;
-  window.agentPlex = {
-    platform: 'win32',
-    summarizeContext: (id, label) => {
-      calls.push({ id, label });
-      return new Promise(resolve => { resolveSummary = resolve; });
-    },
-    writeSession: (id, data) => writes.push({ id, data }),
-  };
+  const writes = [];
+  window.agentPlex = { platform: 'win32', writeSession: (id, data) => writes.push({ id, data }) };
   const source = { id: 'source', title: 'Source', status: 'idle', cli: 'copilot' };
   const target = { id: 'target', title: 'Target', status: 'idle', cli: 'claude' };
   const open = cli => useAppStore.setState({
     sendDialogSourceId: 'source', sessions: { source: { ...source, cli }, target },
     sessionBuffers: { source: 'RAW_PREVIEW' },
   });
-  open('copilot');
   const { SendDialog } = loadSource('src/renderer/components/SendDialog.tsx', {
     '../store': { useAppStore, isSendTarget },
   });
@@ -58,55 +49,23 @@ async function rendererTest(repositoryRoot) {
       button.textContent.includes('Send') && !button.disabled), 'send enabled');
   };
   const send = () => [...host.querySelectorAll('button')].find(button => button.textContent.includes('Send'));
-  await instruction();
-  assert.ok(host.textContent.includes('Summarize with GitHub Copilot'));
-  send().click();
-  send().click();
-  await wait(() => calls.length === 1, 'one inference despite repeated click');
-  assert.equal(writes.length, 0);
-  resolveSummary({ summary: null, error: 'Synthetic Copilot unavailable' });
-  await wait(() => host.querySelector('[role="alert"]'), 'summary failure visible');
-  assert.match(host.querySelector('[role="alert"]').textContent, /Synthetic Copilot unavailable/);
-  assert.equal(writes.length, 0, 'failed summarization must not silently broadcast raw text');
-  const summaryToggle = () => [...host.querySelectorAll('label')].find(label =>
-    label.textContent.includes('Summarize with')).querySelector('input');
-  const checkbox = summaryToggle();
-  checkbox.click();
-  await wait(() => !checkbox.checked && !send().disabled, 'raw send selected explicitly');
-  send().click();
-  await wait(() => writes.some(write => write.data.startsWith('\x1b[200~')), 'raw paste sent');
-  assert.match(writes[0].data, /RAW_PREVIEW/);
-  assert.equal(calls.length, 1);
-  await wait(() => !host.querySelector('textarea'), 'dialog closes after send');
-
-  open('copilot-resume');
-  await instruction();
-  const summaryCheckbox = summaryToggle();
-  if (!summaryCheckbox.checked) summaryCheckbox.click();
-  await wait(() => summaryCheckbox.checked, 'summary restored');
-  send().click();
-  await wait(() => calls.length === 2, 'Copilot picker summary requested');
-  resolveSummary({ summary: 'COPILOT_SUMMARY', error: null });
-  await wait(() => writes.filter(write => write.data.startsWith('\x1b[200~')).length === 2, 'summary broadcast');
-  const second = writes.filter(write => write.data.startsWith('\x1b[200~'))[1];
-  assert.equal(second.id, 'target');
-  assert.match(second.data, /COPILOT_SUMMARY/);
-  assert.doesNotMatch(second.data, /RAW_PREVIEW/);
-  await wait(() => !host.querySelector('textarea'), 'summary send closes dialog');
-  open('copilot');
-  await instruction();
-  send().click();
-  await wait(() => calls.length === 3, 'cancelled summary requested');
-  useAppStore.getState().closeSendDialog();
-  await wait(() => !host.querySelector('textarea'), 'cancelled dialog unmounted');
-  resolveSummary({ summary: 'DO_NOT_BROADCAST', error: null });
-  await new Promise(resolve => setTimeout(resolve, 50));
-  assert.equal(writes.filter(write => write.data.startsWith('\x1b[200~')).length, 2, 'cancelled dialog cannot broadcast later');
-  open('claude');
-  await wait(() => host.textContent.includes('Summarize with Haiku'), 'Claude keeps Haiku label');
+  const pastes = () => writes.filter(write => write.data.startsWith('\x1b[200~'));
+  for (const cli of ['copilot', 'claude']) {
+    open(cli);
+    await instruction();
+    assert.ok(!host.textContent.includes('Summarize'), 'there is no summary option');
+    assert.equal(host.querySelectorAll('input[type="checkbox"]').length, 2, 'only Select All and the one target');
+    send().click();
+    await wait(() => !host.querySelector('textarea'), 'dialog closes after send');
+  }
+  assert.equal(pastes().length, 2, 'one paste per send');
+  for (const paste of pastes()) {
+    assert.equal(paste.id, 'target');
+    assert.match(paste.data, /Continue synthetic task/);
+    assert.match(paste.data, /<session_context>\nContext from Source, another session instance of you:\nRAW_PREVIEW\n<\/session_context>/);
+  }
   reactRoot.unmount();
-  return { realReact: true, copilotAndHaikuLabels: true, duplicateRequestsBlocked: true,
-    visibleFailureWithoutBroadcast: true, explicitRawSend: true, copilotSummaryBroadcast: true, lateCancellationSafe: true };
+  return { realReact: true, noSummaryOption: true, terminalContextSent: true };
 }
 
 let window;

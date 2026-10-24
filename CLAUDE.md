@@ -22,7 +22,7 @@ Multi-session desktop orchestrator for Claude, Copilot, Codex, and shell session
 5. **HITL detection**:
    - Prompt pattern detection from terminal output (generic)
    - Copilot permission events (`permission.requested/completed`) for fast waiting-state updates.
-6. **Cross-session messaging**: `SendDialog.tsx` sends raw buffer context or an optional summary: GitHub Copilot (`copilot-summary-proxy.ts`) for Copilot sources, Anthropic Haiku (`AGENTPLEX_API_KEY`) for others. Targets are live, writable sessions other than the source (`isSendTarget()` in `store.ts`), and the node's send button is disabled when there are none.
+6. **Cross-session messaging**: `SendDialog.tsx` pastes the instruction plus the source's last 2,000 characters of terminal output (ANSI stripped, wrapped in `<session_context>`) into each selected target. Targets are live, writable sessions other than the source (`isSendTarget()` in `store.ts`), and the node's send button is disabled when there are none.
 7. **Duplicate Session**: `SessionManager.fork()` (IPC `session:fork`, `window.agentPlex.forkSession`) starts a Claude session with `--resume <source> --fork-session --session-id <new uuid>`, so the copy persists and restores like any other session. A source with no conversation yet gets an empty Claude session in the same directory. Non-Claude sessions can't be duplicated. `SessionNode.tsx` adds the copy to the source's group (read once the fork finishes) with `addToGroup(..., { reposition: true })`, covered by `session-node-e2e.cjs`.
 
 ## Key Main-Process Files

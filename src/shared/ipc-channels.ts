@@ -326,7 +326,6 @@ export const IPC = {
   TASK_UPDATE: 'task:update',
   TASK_LIST: 'task:list',
   THEME_CHANGE: 'theme:change',
-  SUMMARIZE_CONTEXT: 'summarize:context',
   DISPLAY_NAMES_GET: 'displayNames:get',
   SESSION_RESTORE_ALL: 'session:restoreAll',
   SESSION_UPDATE_STATE: 'session:updateState',
