@@ -22,11 +22,12 @@ Multi-session desktop orchestrator for Claude, Copilot, Codex, and shell session
 5. **HITL detection**:
    - Prompt pattern detection from terminal output (generic)
    - Copilot permission events (`permission.requested/completed`) for fast waiting-state updates.
-6. **Cross-session messaging**: `SendDialog.tsx` sends raw buffer context or optional Anthropic summary (`AGENTPLEX_API_KEY`).
+6. **Cross-session messaging**: `SendDialog.tsx` sends raw buffer context or an optional summary: GitHub Copilot (`copilot-summary-proxy.ts`) for Copilot sources, Anthropic Haiku (`AGENTPLEX_API_KEY`) for others. Targets are live, writable sessions other than the source (`isSendTarget()` in `store.ts`), and the node's send button is disabled when there are none.
+7. **Duplicate Session**: `SessionManager.fork()` (IPC `session:fork`, `window.agentPlex.forkSession`) starts a Claude session with `--resume <source> --fork-session --session-id <new uuid>`, so the copy persists and restores like any other session. A source with no conversation yet gets an empty Claude session in the same directory. Non-Claude sessions can't be duplicated.
 
 ## Key Main-Process Files
 
-- `src/main/session-manager.ts`: PTY spawn/kill, resume, restore, status loop, external adoption
+- `src/main/session-manager.ts`: PTY spawn/kill, resume, fork, restore, status loop, external adoption
 - `src/main/jsonl-session-watcher.ts`: Claude/Copilot event parsing for sub-agent/plan/task/HITL signals
 - `src/main/claude-session-scanner.ts`: Claude project/session discovery + transcript rendering
 - `src/main/copilot-session-scanner.ts`: Copilot project/session discovery + transcript rendering
@@ -42,8 +43,20 @@ Multi-session desktop orchestrator for Claude, Copilot, Codex, and shell session
 
 ```bash
 pnpm install
-pnpm start
+pnpm start          # production build, reused until sources change
+pnpm dev            # live reload; type `rs` in its terminal to restart the main process
 pnpm lint
+pnpm test           # node:test suites in scripts/*.test.cjs
+pnpm exec tsc --noEmit
+node scripts/run-git-editor-e2e.cjs <script>   # Electron e2e, e.g. send-dialog-e2e.cjs, session-node-e2e.cjs
 pnpm package
 pnpm make
 ```
+
+## Documentation
+
+Every change to the project needs a matching documentation update in the same change. That covers features, behavior, commands, configuration, file layout and tests. Update whichever of `README.md` and `CLAUDE.md` the change affects. If a change truly affects no documentation, say so explicitly rather than skipping the check.
+
+## Repository
+
+This repository (`BorisKozo/agentplex`) is based on `AlexPeppas/agentplex` but is developed independently. Pull requests target this repository's `master`; never push to, or open pull requests against, the original project.
