@@ -204,6 +204,7 @@ Available scripts: `git-editor-e2e.cjs`, `send-dialog-e2e.cjs`,
 - **Graphite dark / Stone light** — muted paired themes for the graph, explorers, and toolbar
 - **Groups** — gather sessions into colored circles by dragging; the target circle highlights blue (join) or red (leave) before you drop. When every session in a group works in the same directory, the directory is shown under the group name, and double-clicking inside the circle starts a new session there. Right-click the colored dot next to a group's name to pick its color
 - **Inline rename** — double-click any node to rename it
+- **Panel position** — open session panes beside the canvas (side by side) or below it (stacked top to bottom), from **Settings → Panel position**; the choice persists across launches
 
 Switch between Graphite and Stone in **Settings**; your choice persists across
 launches. Terminal output and Git diff editors remain dark in both themes to

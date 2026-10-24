@@ -73,6 +73,18 @@ export interface GroupDragHint {
 
 export type PanelId ='explorer' | 'search' | 'templates' | 'settings';
 
+/** Where session panes open: beside the canvas, or below it stacked vertically. */
+export type PanelPosition = 'side' | 'bottom';
+const PANEL_POSITION_KEY = 'agentplex-panel-position';
+
+export function loadPanelPosition(): PanelPosition {
+  try {
+    return localStorage.getItem(PANEL_POSITION_KEY) === 'bottom' ? 'bottom' : 'side';
+  } catch {
+    return 'side';
+  }
+}
+
 export interface AppState {
   nodes: Node[];
   edges: Edge[];
@@ -178,6 +190,10 @@ export interface AppState {
   // Terminal fullscreen
   terminalFullscreen: boolean;
   toggleTerminalFullscreen: () => void;
+
+  // Session pane placement (Settings → Panel position), saved in localStorage
+  panelPosition: PanelPosition;
+  setPanelPosition: (position: PanelPosition) => void;
 
   // Drawing overlay
   drawingMode: boolean;
@@ -478,6 +494,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   terminalFullscreen: false,
   toggleTerminalFullscreen: () => set((s) => ({ terminalFullscreen: !s.terminalFullscreen })),
+
+  panelPosition: loadPanelPosition(),
+  setPanelPosition: (position: PanelPosition) => {
+    try {
+      localStorage.setItem(PANEL_POSITION_KEY, position);
+    } catch {
+      // Not persisted; the choice still applies for this run
+    }
+    set({ panelPosition: position });
+  },
 
   drawingMode: false,
   drawTool: 'pen' as const,

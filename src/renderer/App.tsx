@@ -56,6 +56,7 @@ function playBell() {
 export function App() {
   const hasOpenPanes = useAppStore((s) => s.openPanes.length > 0);
   const terminalFullscreen = useAppStore((s) => s.terminalFullscreen);
+  const panesAtBottom = useAppStore((s) => s.panelPosition === 'bottom');
   const sendDialogSourceId = useAppStore((s) => s.sendDialogSourceId);
   const launcherOpen = useAppStore((s) => s.launcherOpen);
   const launcherIdentity = useAppStore((s) => `${s.launcherMode}:${s.launcherCli}`);
@@ -76,7 +77,8 @@ export function App() {
 
   const applySessionName = useAppStore((s) => s.applySessionName);
 
-  const [terminalWidth, setTerminalWidth] = useState(40); // percentage
+  const [terminalWidth, setTerminalWidth] = useState(40); // percentage, panes at the side
+  const [terminalHeight, setTerminalHeight] = useState(40); // percentage, panes at the bottom
   const dragging = useRef(false);
   const outerRef = useRef<HTMLDivElement>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -84,14 +86,19 @@ export function App() {
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     dragging.current = true;
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = panesAtBottom ? 'row-resize' : 'col-resize';
     document.body.style.userSelect = 'none';
 
     const onMove = (ev: MouseEvent) => {
       if (!dragging.current || !mainAreaRef.current) return;
       const rect = mainAreaRef.current.getBoundingClientRect();
-      const pct = ((rect.right - ev.clientX) / rect.width) * 100;
-      setTerminalWidth(Math.max(20, Math.min(80, pct)));
+      if (panesAtBottom) {
+        const pct = ((rect.bottom - ev.clientY) / rect.height) * 100;
+        setTerminalHeight(Math.max(20, Math.min(80, pct)));
+      } else {
+        const pct = ((rect.right - ev.clientX) / rect.width) * 100;
+        setTerminalWidth(Math.max(20, Math.min(80, pct)));
+      }
     };
 
     const onUp = () => {
@@ -104,7 +111,7 @@ export function App() {
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, []);
+  }, [panesAtBottom]);
 
   const activePanelId = useAppStore((s) => s.activePanelId);
   const setSidePanelWidth = useAppStore((s) => s.setSidePanelWidth);
@@ -368,6 +375,8 @@ export function App() {
     return () => cleanupWake();
   }, []);
 
+  const terminalSize = panesAtBottom ? terminalHeight : terminalWidth;
+
   return (
     <div className="flex flex-col h-full">
       <Toolbar />
@@ -382,11 +391,12 @@ export function App() {
             />
           </>
         )}
-        <div className="flex flex-1 min-w-0 overflow-hidden" ref={mainAreaRef}>
+        {/* Session panes sit beside the canvas, or below it (Settings → Panel position). */}
+        <div className={`flex flex-1 min-w-0 overflow-hidden ${panesAtBottom ? 'flex-col' : ''}`} ref={mainAreaRef}>
           {!(hasOpenPanes && terminalFullscreen) && (
             <div
-              className="flex-1 min-w-0 h-full"
-              style={hasOpenPanes ? { flex: `0 0 ${100 - terminalWidth}%` } : undefined}
+              className="flex-1 min-w-0 min-h-0 h-full"
+              style={hasOpenPanes ? { flex: `0 0 ${100 - terminalSize}%` } : undefined}
             >
               <ReactFlowProvider>
                 <GraphCanvas />
@@ -397,11 +407,11 @@ export function App() {
             <>
               {!terminalFullscreen && (
                 <div
-                  className="flex-[0_0_4px] cursor-col-resize bg-border transition-colors duration-[120ms] hover:bg-accent active:bg-accent"
+                  className={`flex-[0_0_4px] bg-border transition-colors duration-[120ms] hover:bg-accent active:bg-accent ${panesAtBottom ? 'cursor-row-resize' : 'cursor-col-resize'}`}
                   onMouseDown={handleResizeStart}
                 />
               )}
-              <div className="min-w-0 h-full" style={{ flex: terminalFullscreen ? '1 1 100%' : `0 0 ${terminalWidth}%` }}>
+              <div className="min-w-0 min-h-0 h-full" style={{ flex: terminalFullscreen ? '1 1 100%' : `0 0 ${terminalSize}%` }}>
                 <ErrorBoundary>
                   <TerminalPanel />
                 </ErrorBoundary>
