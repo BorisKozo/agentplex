@@ -39,7 +39,7 @@ const centerOf = group => ({ x: group.position.x + group.width / 2, y: group.pos
 
 // GraphCanvas with React Flow and the hooks stubbed: returns the props it hands to
 // <ReactFlow>, its effects, and the viewports it applied.
-function renderCanvas(store) {
+function renderCanvas(store, { nodesInitialized = true } = {}) {
   const effects = [], applied = [];
   const jsx = (type, props) => ({ type, props });
   const real = store.useAppStore;
@@ -54,6 +54,7 @@ function renderCanvas(store) {
     '@xyflow/react': {
       ReactFlow: 'ReactFlow', Background: 'Background', Controls: 'Controls', Panel: 'Panel',
       useReactFlow: () => ({ fitView() {}, setViewport: viewport => applied.push(viewport) }),
+      useNodesInitialized: () => nodesInitialized,
     },
     '@xyflow/react/dist/style.css': {},
     './SessionNode': { SessionNode: 'SessionNode' }, './GroupNode': { GroupNode: 'GroupNode' },
@@ -150,6 +151,12 @@ test('the canvas turns off keyboard deletion, records pan/zoom and applies a res
     assert.deepEqual(applied, [], 'nothing applied without a restored viewport');
 
     t.useAppStore.setState({ restoredViewport: { x: 1, y: 2, zoom: 0.5 } });
+    // Before the cards are measured, React Flow's initial fitView is still to come.
+    const unmeasured = renderCanvas(t.store, { nodesInitialized: false });
+    unmeasured.effects.forEach(effect => effect());
+    assert.deepEqual(unmeasured.applied, [], 'waits for the initial fitView');
+    assert.ok(t.useAppStore.getState().restoredViewport, 'still pending');
+
     const again = renderCanvas(t.store);
     again.effects.forEach(effect => effect());
     assert.deepEqual(again.applied, [{ x: 1, y: 2, zoom: 0.5 }]);
