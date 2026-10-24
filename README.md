@@ -13,6 +13,8 @@
   <a href="#build-from-source">Build from source</a>
 </p>
 
+> **About this project:** this repository is based on [AlexPeppas/agentplex](https://github.com/AlexPeppas/agentplex), but it is developed independently and is going in a different direction. Changes here are not contributed back to the original project, and the two may diverge in features and behavior.
+
 ---
 
 ## Requirements
@@ -33,7 +35,7 @@ Download **AgentPlex.exe** from the [latest release](https://github.com/AlexPepp
 If you prefer to build from source instead of using the installer:
 
 ```bash
-git clone https://github.com/AlexPeppas/agentplex.git
+git clone https://github.com/BorisKozo/agentplex.git
 cd agentplex
 pnpm install
 pnpm start
