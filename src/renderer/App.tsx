@@ -223,37 +223,53 @@ export function App() {
     reconnect().catch(err => console.error('[reconnect] Failed to hydrate sessions:', err));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist node groups to disk whenever group membership/label/color changes.
+  // Persist the canvas layout to disk whenever anything visible on it changes:
+  // groups (membership, label, color, size, position), session card positions,
+  // and pan/zoom.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let lastSignature = '';
     let lastNodes = useAppStore.getState().nodes;
     let lastSessions = useAppStore.getState().sessions;
     let lastUnresolvedGroups = useAppStore.getState().unresolvedGroups;
+    let lastViewport = useAppStore.getState().viewport;
 
     const unsubscribe = useAppStore.subscribe((state) => {
       if (!groupsReadyRef.current) return;
       // Skip the work for the frequent buffer/status updates that don't touch
       // node or session structure.
-      if (state.nodes === lastNodes && state.sessions === lastSessions && state.unresolvedGroups === lastUnresolvedGroups) return;
+      if (state.nodes === lastNodes && state.sessions === lastSessions
+        && state.unresolvedGroups === lastUnresolvedGroups && state.viewport === lastViewport) return;
       lastNodes = state.nodes;
       lastSessions = state.sessions;
       lastUnresolvedGroups = state.unresolvedGroups;
+      lastViewport = state.viewport;
 
-      const data = serializeGroups(state.nodes, state.sessions, state.unresolvedGroups);
+      const data = serializeGroups(state.nodes, state.sessions, state.unresolvedGroups, state.viewport);
       const signature = JSON.stringify(data);
       if (signature === lastSignature) return;
       lastSignature = signature;
 
+      pending = data;
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (!groupsReadyRef.current) return;
-        window.agentPlex.groupsSave(data).catch((err) => console.error('[groups] Save failed:', err));
-      }, 500);
+      timer = setTimeout(flush, 500);
     });
 
-    return () => {
+    let pending: ReturnType<typeof serializeGroups> | null = null;
+    function flush() {
       if (timer) clearTimeout(timer);
+      timer = null;
+      if (!pending || !groupsReadyRef.current) return;
+      const data = pending;
+      pending = null;
+      window.agentPlex.groupsSave(data).catch((err) => console.error('[groups] Save failed:', err));
+    }
+    // Don't lose a change made in the last half second before the window closes.
+    window.addEventListener('beforeunload', flush);
+
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      flush();
       unsubscribe();
     };
   }, []);

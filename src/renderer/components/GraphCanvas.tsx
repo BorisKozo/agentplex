@@ -31,6 +31,7 @@ export function GraphCanvas() {
   const addToGroup = useAppStore((s) => s.addToGroup);
   const removeFromGroup = useAppStore((s) => s.removeFromGroup);
   const recomputeGroup = useAppStore((s) => s.recomputeGroup);
+  const setGroupDragHint = useAppStore((s) => s.setGroupDragHint);
   const activePaneId = useAppStore((s) => s.activePaneId);
   const shouldFocusNode = useAppStore((s) => s.shouldFocusNode);
   const drawingMode = useAppStore((s) => s.drawingMode);
@@ -55,56 +56,38 @@ export function GraphCanvas() {
     return () => clearTimeout(timer);
   }, [activePaneId, shouldFocusNode, fitView]);
 
+  // Preview the drop while dragging: outline the group the session would join or leave.
+  const onNodeDrag: OnNodeDrag = useCallback(
+    (_event, draggedNode) => {
+      const drop = resolveDrop(draggedNode);
+      setGroupDragHint(drop && (drop.kind === 'join' || drop.kind === 'leave')
+        ? { groupId: drop.groupId, kind: drop.kind }
+        : null);
+    },
+    [setGroupDragHint]
+  );
+
   const onNodeDragStop: OnNodeDrag = useCallback(
     (_event, draggedNode) => {
-      // Dragging a whole group node moves its members automatically (React Flow
-      // parent/child) — nothing to reconcile.
-      if (draggedNode.type !== 'sessionNode') return;
-
-      // Use the final dragged node from the callback, not the (possibly stale) store copy.
-      const storeNodes = useAppStore.getState().nodes;
-      const allNodes = storeNodes.map((n) => (n.id === draggedNode.id ? draggedNode : n));
-
-      // Already in a group → either it was dragged out of the circle (remove) or
-      // moved within it (refit the circle).
-      if (draggedNode.parentId) {
-        const group = allNodes.find((n) => n.id === draggedNode.parentId);
-        if (!group) return;
-        const circle = getGroupCircle(group);
-        const center = childAbsoluteCenter(draggedNode, group);
-        if (distance(center, circle) > circle.r) {
+      setGroupDragHint(null);
+      const drop = resolveDrop(draggedNode);
+      if (!drop) return;
+      switch (drop.kind) {
+        case 'leave':
           removeFromGroup(draggedNode.id);
-        } else {
-          recomputeGroup(draggedNode.parentId);
-        }
-        return;
-      }
-
-      // Ungrouped node: dropped onto a group circle → join; onto another ungrouped
-      // session node → form a new group.
-      const draggedCenter = topLevelCenter(draggedNode);
-      const draggedRect = getNodeRect(draggedNode);
-
-      for (const targetNode of allNodes) {
-        if (targetNode.id === draggedNode.id) continue;
-
-        if (targetNode.type === 'groupNode') {
-          const circle = getGroupCircle(targetNode);
-          if (distance(draggedCenter, circle) <= circle.r) {
-            addToGroup(targetNode.id, draggedNode.id, { reposition: false });
-            return;
-          }
-        }
-
-        if (targetNode.type === 'sessionNode' && !targetNode.parentId) {
-          if (rectsIntersect(draggedRect, getNodeRect(targetNode))) {
-            createGroupWithMembers([targetNode.id, draggedNode.id]);
-            return;
-          }
-        }
+          break;
+        case 'stay':
+          recomputeGroup(drop.groupId);
+          break;
+        case 'join':
+          addToGroup(drop.groupId, draggedNode.id, { reposition: false });
+          break;
+        case 'pair':
+          createGroupWithMembers([drop.targetId, draggedNode.id]);
+          break;
       }
     },
-    [createGroupWithMembers, addToGroup, removeFromGroup, recomputeGroup]
+    [createGroupWithMembers, addToGroup, removeFromGroup, recomputeGroup, setGroupDragHint]
   );
 
   const bumpViewportMove = useAppStore((s) => s.bumpViewportMove);
@@ -117,6 +100,22 @@ export function GraphCanvas() {
     bumpViewportMove();
   }, [bumpViewportMove]);
 
+  // Record pan/zoom once a move settles so it's saved with the layout, and apply a
+  // saved one when the layout is restored.
+  const setViewport = useAppStore((s) => s.setViewport);
+  const onMoveEnd = useCallback((_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+    setViewport({ x: viewport.x, y: viewport.y, zoom: viewport.zoom });
+  }, [setViewport]);
+
+  const restoredViewport = useAppStore((s) => s.restoredViewport);
+  const clearRestoredViewport = useAppStore((s) => s.clearRestoredViewport);
+  const { setViewport: applyViewport } = useReactFlow();
+  useEffect(() => {
+    if (!restoredViewport) return;
+    applyViewport(restoredViewport);
+    clearRestoredViewport();
+  }, [restoredViewport, applyViewport, clearRestoredViewport]);
+
   return (
     <div className="graph-canvas w-full h-full relative">
       <ReactFlow
@@ -124,9 +123,11 @@ export function GraphCanvas() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
         onMove={onMove}
+        onMoveEnd={onMoveEnd}
         nodeTypes={nodeTypes}
         fitView
         panOnDrag={!drawingMode}
@@ -136,6 +137,7 @@ export function GraphCanvas() {
         nodesDraggable={!drawingMode}
         nodesConnectable={!drawingMode}
         elementsSelectable={!drawingMode}
+        deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={22} size={1} color="var(--grid)" />
@@ -150,6 +152,55 @@ export function GraphCanvas() {
       <DrawingOverlay />
     </div>
   );
+}
+
+type DropAction =
+  | { kind: 'leave' | 'stay' | 'join'; groupId: string }
+  | { kind: 'pair'; targetId: string };
+
+/** What releasing `draggedNode` at its current position does. Shared by the live
+ *  drag preview and the drop itself so the highlight always matches the result. */
+function resolveDrop(draggedNode: Node): DropAction | null {
+  // Dragging a whole group node moves its members automatically (React Flow
+  // parent/child) — nothing to reconcile.
+  if (draggedNode.type !== 'sessionNode') return null;
+
+  // Use the dragged node from the callback, not the (possibly stale) store copy.
+  const storeNodes = useAppStore.getState().nodes;
+  const allNodes = storeNodes.map((n) => (n.id === draggedNode.id ? draggedNode : n));
+
+  // Already in a group → either it was dragged out of the circle (leave) or
+  // moved within it (stay; refit the circle).
+  if (draggedNode.parentId) {
+    const group = allNodes.find((n) => n.id === draggedNode.parentId);
+    if (!group) return null;
+    const circle = getGroupCircle(group);
+    const center = childAbsoluteCenter(draggedNode, group);
+    return { kind: distance(center, circle) > circle.r ? 'leave' : 'stay', groupId: group.id };
+  }
+
+  // Ungrouped node: dropped onto a group circle → join; onto another ungrouped
+  // session node → form a new group.
+  const draggedCenter = topLevelCenter(draggedNode);
+  const draggedRect = getNodeRect(draggedNode);
+
+  for (const targetNode of allNodes) {
+    if (targetNode.id === draggedNode.id) continue;
+
+    if (targetNode.type === 'groupNode') {
+      const circle = getGroupCircle(targetNode);
+      if (distance(draggedCenter, circle) <= circle.r) {
+        return { kind: 'join', groupId: targetNode.id };
+      }
+    }
+
+    if (targetNode.type === 'sessionNode' && !targetNode.parentId) {
+      if (rectsIntersect(draggedRect, getNodeRect(targetNode))) {
+        return { kind: 'pair', targetId: targetNode.id };
+      }
+    }
+  }
+  return null;
 }
 
 // Helper functions for hit testing

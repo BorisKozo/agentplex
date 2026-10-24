@@ -8,7 +8,15 @@ import {
   applyEdgeChanges,
   MarkerType,
 } from '@xyflow/react';
-import { SessionStatus, type SessionInfo, type CliTool, type PersistedGroup, type PersistedGroups } from '../shared/ipc-channels';
+import {
+  SessionStatus,
+  type SessionInfo,
+  type CliTool,
+  type PersistedGroup,
+  type PersistedGroupMember,
+  type PersistedGroups,
+  type CanvasViewport,
+} from '../shared/ipc-channels';
 import type { SubAgentNodeData } from './components/SubAgentNode';
 import { getSplitPaneEnabled } from './components/panels/SettingsPanel';
 import { conversationIdentity } from '../shared/conversation-identity';
@@ -58,7 +66,12 @@ interface SubagentEntry {
   spawnedAt: number;
 }
 
-export type PanelId = 'explorer' | 'search' | 'templates' | 'settings';
+export interface GroupDragHint {
+  groupId: string;
+  kind: 'join' | 'leave';
+}
+
+export type PanelId ='explorer' | 'search' | 'templates' | 'settings';
 
 export interface AppState {
   nodes: Node[];
@@ -113,6 +126,18 @@ export interface AppState {
   openSendDialog: (sourceSessionId: string) => void;
   closeSendDialog: () => void;
 
+  /** What dropping the session being dragged would do to a group right now:
+   *  join it (highlighted blue) or leave it (highlighted red). */
+  groupDragHint: GroupDragHint | null;
+  setGroupDragHint: (hint: GroupDragHint | null) => void;
+
+  /** Canvas pan/zoom as of the last finished move; saved with the layout. */
+  viewport: CanvasViewport | null;
+  setViewport: (viewport: CanvasViewport) => void;
+  /** Saved pan/zoom waiting for GraphCanvas to apply it after a restore. */
+  restoredViewport: CanvasViewport | null;
+  clearRestoredViewport: () => void;
+
   /** Bumped on viewport pan/zoom — nodes watch this to dismiss menus */
   viewportMoveCount: number;
   bumpViewportMove: () => void;
@@ -123,8 +148,9 @@ export interface AppState {
   addToGroup: (groupId: string, nodeId: string, opts?: { reposition?: boolean }) => void;
   removeFromGroup: (nodeId: string) => void;
   recomputeGroup: (groupId: string) => void;
-  resizeGroup: (groupId: string, size: number, opts?: { recenter?: boolean }) => void;
+  resizeGroup: (groupId: string, size: number, opts?: { recenter?: boolean; keepMembersInPlace?: boolean }) => void;
   renameGroup: (groupId: string, name: string) => void;
+  setGroupColor: (groupId: string, color: string) => void;
   restoreGroups: (persisted: PersistedGroups) => void;
   renameSession: (sessionId: string, name: string) => void;
   applySessionName: (sessionId: string, name: string) => void;
@@ -189,7 +215,7 @@ const GROUP_MIN_MANUAL_SIZE = 120;
 const GROUP_ADJACENT_GAP = 40;
 
 /** Chrome-like palette; new groups cycle through it. */
-const GROUP_COLORS = ['#8fa6bb', '#b8a0a0', '#b5a585', '#98aa96', '#8eacab', '#aaa0ba', '#b5a092', '#b39da9'];
+export const GROUP_COLORS = ['#8fa6bb', '#b8a0a0', '#b5a585', '#98aa96', '#8eacab', '#aaa0ba', '#b5a092', '#b39da9'];
 
 function nextGroupColor(): string {
   const color = GROUP_COLORS[groupColorCounter % GROUP_COLORS.length];
@@ -288,6 +314,28 @@ export function isSendTarget(session: SessionInfo, sourceId: string | null): boo
   return session.id !== sourceId && session.status !== SessionStatus.Killed && !session.readOnly;
 }
 
+/** The working directory every session in the group shares, or null when the group
+ *  is empty, a member's directory is unknown, or members are in different directories.
+ *  Paths compare ignoring trailing separators, and ignoring case and slash direction
+ *  on Windows. */
+export function groupSharedDirectory(
+  nodes: Node[],
+  sessions: Record<string, SessionInfo>,
+  groupId: string,
+  platform: string,
+): string | null {
+  const dirs = nodes
+    .filter((n) => n.parentId === groupId && n.type === 'sessionNode')
+    .map((n) => sessions[(n.data as SessionNodeData).sessionId]?.cwd);
+  if (dirs.length === 0 || dirs.some((dir) => !dir)) return null;
+  const normalize = (dir: string) => {
+    const trimmed = dir.replace(/[\\/]+$/, '') || dir;
+    return platform === 'win32' ? trimmed.replace(/\//g, '\\').toLowerCase() : trimmed;
+  };
+  const first = normalize(dirs[0]!);
+  return dirs.every((dir) => normalize(dir!) === first) ? dirs[0]! : null;
+}
+
 /** Serialize current groups into the persisted shape (membership keyed by both the
  *  live node id and the stable resume UUID). Deterministically ordered so callers can
  *  diff the JSON to skip redundant disk writes. */
@@ -295,35 +343,43 @@ export function serializeGroups(
   nodes: Node[],
   sessions: Record<string, SessionInfo>,
   unresolvedGroups: Record<string, PersistedGroup> = {},
+  viewport: CanvasViewport | null = null,
 ): PersistedGroups {
   const groups = nodes.filter((n) => n.type === 'groupNode');
   const groupById = new Map(groups.map((g) => [g.id, g]));
+  const toMember = (n: Node, position: { x: number; y: number }): PersistedGroupMember => {
+    const session = sessions[n.id];
+    return {
+      sessionId: n.id, resumeSessionId: session?.resumeSessionId ?? null,
+      cli: session?.cli, startedAt: session?.startedAt, position,
+    };
+  };
   const out: PersistedGroup[] = groups.map((g) => {
     const members = nodes
       .filter((n) => n.parentId === g.id && n.type === 'sessionNode')
-      .map<PersistedGroup['members'][number]>((n) => {
-        // Child positions are relative to the group; store the absolute position
-        // so the cluster can be restored to the same spot on a fresh launch.
-        const parent = groupById.get(g.id);
-        const position = parent
-          ? { x: parent.position.x + n.position.x, y: parent.position.y + n.position.y }
-          : n.position;
-        const session = sessions[n.id];
-        return {
-          sessionId: n.id, resumeSessionId: session?.resumeSessionId ?? null,
-          cli: session?.cli, startedAt: session?.startedAt, position,
-        };
-      })
+      // Child positions are relative to the group; store the absolute position
+      // so the cluster can be restored to the same spot on a fresh launch.
+      .map((n) => toMember(n, { x: g.position.x + n.position.x, y: g.position.y + n.position.y }))
       .concat(unresolvedGroups[g.id]?.members ?? [])
       .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
     const data = g.data as GroupNodeData;
-    return { label: data.label, color: data.color, manualSize: data.manualSize, members };
+    const size = groupSize(g);
+    const center = { x: g.position.x + size / 2, y: g.position.y + size / 2 };
+    return { label: data.label, color: data.color, manualSize: data.manualSize, center, members };
   });
   for (const [id, group] of Object.entries(unresolvedGroups)) {
     if (!groupById.has(id)) out.push(group);
   }
   out.sort((a, b) => (a.label + a.color).localeCompare(b.label + b.color));
-  return { groups: out.filter((g) => g.members.length > 0) };
+  const ungrouped = nodes
+    .filter((n) => n.type === 'sessionNode' && !n.parentId)
+    .map((n) => toMember(n, { ...n.position }))
+    .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+  return {
+    groups: out.filter((g) => g.members.length > 0),
+    sessions: ungrouped,
+    ...(viewport ? { viewport } : {}),
+  };
 }
 
 /** Detach a node from its group: convert to absolute position, clear parentId, then
@@ -372,6 +428,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   displayNames: {},
   nodeCounter: 0,
   sendDialogSourceId: null,
+  groupDragHint: null,
+  viewport: null,
+  setViewport: (viewport: CanvasViewport) => set({ viewport }),
+  restoredViewport: null,
+  clearRestoredViewport: () => set({ restoredViewport: null }),
   viewportMoveCount: 0,
   bumpViewportMove: () => set((s) => ({ viewportMoveCount: s.viewportMoveCount + 1 })),
   terminalTab: 'session' as const,
@@ -907,6 +968,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sendDialogSourceId: null });
   },
 
+  setGroupDragHint: (hint: GroupDragHint | null) => {
+    const current = get().groupDragHint;
+    if (current?.groupId === hint?.groupId && current?.kind === hint?.kind) return;
+    set({ groupDragHint: hint });
+  },
+
   onNodesChange: (changes) => {
     const unresolvedGroups = { ...get().unresolvedGroups };
     for (const change of changes) {
@@ -1020,26 +1087,39 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ nodes: sortGroupsFirst(computeGroupGeometry(get().nodes, groupId)) });
   },
 
-  resizeGroup: (groupId: string, size: number, opts?: { recenter?: boolean }) => {
+  resizeGroup: (groupId: string, size: number, opts?: { recenter?: boolean; keepMembersInPlace?: boolean }) => {
     const clamped = Math.max(GROUP_MIN_MANUAL_SIZE, size);
-    set((state) => ({
-      unresolvedGroups: state.unresolvedGroups[groupId]
-        ? { ...state.unresolvedGroups, [groupId]: { ...state.unresolvedGroups[groupId], manualSize: clamped } }
-        : state.unresolvedGroups,
-      nodes: state.nodes.map((n) => {
-        if (n.id !== groupId) return n;
-        const cur = getNodeSize(n);
-        // recenter keeps the circle centred on its current centre (programmatic
-        // resize); the NodeResizer path leaves position to React Flow.
-        const position = opts?.recenter
-          ? {
-              x: n.position.x + cur.width / 2 - clamped / 2,
-              y: n.position.y + cur.height / 2 - clamped / 2,
-            }
-          : n.position;
-        return { ...n, position, width: clamped, height: clamped, data: { ...n.data, manualSize: clamped } };
-      }),
-    }));
+    set((state) => {
+      const group = state.nodes.find((n) => n.id === groupId);
+      if (!group) return {};
+      const cur = getNodeSize(group);
+      // recenter keeps the circle centred on its current centre; otherwise the
+      // top-left corner stays put.
+      const position = opts?.recenter
+        ? {
+            x: group.position.x + cur.width / 2 - clamped / 2,
+            y: group.position.y + cur.height / 2 - clamped / 2,
+          }
+        : group.position;
+      // Members are positioned relative to the group's corner; shift them back by
+      // however far the corner moved so they stay where they are on the canvas.
+      const dx = opts?.keepMembersInPlace ? group.position.x - position.x : 0;
+      const dy = opts?.keepMembersInPlace ? group.position.y - position.y : 0;
+      return {
+        unresolvedGroups: state.unresolvedGroups[groupId]
+          ? { ...state.unresolvedGroups, [groupId]: { ...state.unresolvedGroups[groupId], manualSize: clamped } }
+          : state.unresolvedGroups,
+        nodes: state.nodes.map((n) => {
+          if (n.id === groupId) {
+            return { ...n, position, width: clamped, height: clamped, data: { ...n.data, manualSize: clamped } };
+          }
+          if (n.parentId === groupId && (dx || dy)) {
+            return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+          }
+          return n;
+        }),
+      };
+    });
   },
 
   renameGroup: (groupId: string, name: string) => {
@@ -1049,6 +1129,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         : state.unresolvedGroups,
       nodes: state.nodes.map((n) =>
         n.id === groupId ? { ...n, data: { ...n.data, label: name } } : n
+      ),
+    }));
+  },
+
+  setGroupColor: (groupId: string, color: string) => {
+    set((state) => ({
+      unresolvedGroups: state.unresolvedGroups[groupId]
+        ? { ...state.unresolvedGroups, [groupId]: { ...state.unresolvedGroups[groupId], color } }
+        : state.unresolvedGroups,
+      nodes: state.nodes.map((n) =>
+        n.id === groupId ? { ...n, data: { ...n.data, color } } : n
       ),
     }));
   },
@@ -1076,22 +1167,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     const claimed = new Set<string>();
     const unresolvedGroups: Record<string, PersistedGroup> = {};
 
+    // The live node a saved entry refers to: by resume UUID after a restart, or by
+    // id plus PTY start time after a renderer-only reload.
+    const resolve = (m: PersistedGroupMember): string | undefined => {
+      const key = conversationIdentity(m.cli, m.resumeSessionId);
+      if (m.resumeSessionId && resumeCounts.get(key) === 1) {
+        const candidate = resumeToId.get(key);
+        return candidate && presentSessionIds.has(candidate) ? candidate : undefined;
+      }
+      if (!m.resumeSessionId && m.startedAt !== undefined
+        && state.sessions[m.sessionId]?.startedAt === m.startedAt
+        && (!m.cli || conversationIdentity(state.sessions[m.sessionId]?.cli, null) === conversationIdentity(m.cli, null))
+        && presentSessionIds.has(m.sessionId)) {
+        return m.sessionId;
+      }
+      return undefined;
+    };
+
     for (const group of persisted.groups) {
       const memberIds: string[] = [];
       const unresolvedMembers: PersistedGroup['members'] = [];
       const savedPositions = new Map<string, { x: number; y: number }>();
       for (const m of group.members) {
-        let resolved: string | undefined;
-        const key = conversationIdentity(m.cli, m.resumeSessionId);
-        if (m.resumeSessionId && resumeCounts.get(key) === 1) {
-          const candidate = resumeToId.get(key);
-          if (candidate && presentSessionIds.has(candidate)) resolved = candidate;
-        } else if (!m.resumeSessionId && m.startedAt !== undefined
-          && state.sessions[m.sessionId]?.startedAt === m.startedAt
-          && (!m.cli || conversationIdentity(state.sessions[m.sessionId]?.cli, null) === conversationIdentity(m.cli, null))
-          && presentSessionIds.has(m.sessionId)) {
-          resolved = m.sessionId;
-        }
+        const resolved = resolve(m);
         if (resolved && !claimed.has(resolved)) {
           claimed.add(resolved);
           memberIds.push(resolved);
@@ -1132,11 +1230,44 @@ export const useAppStore = create<AppState>((set, get) => ({
           // saved layout, which previously left sessions scattered outside the
           // circle after relaunch.
           const restoredSize = Math.max(group.manualSize, groupSize(created));
-          get().resizeGroup(created.id, restoredSize, { recenter: true });
+          // Members were just placed at their saved absolute positions; keep them
+          // there. Without keepMembersInPlace the recenter shifts every member by
+          // half the size change, and that shift accumulates on each restart.
+          get().resizeGroup(created.id, restoredSize, { recenter: true, keepMembersInPlace: true });
+          // Put the circle back where it was; members keep their restored spots.
+          if (group.center) {
+            const resized = get().nodes.find((n) => n.id === created.id)!;
+            const half = groupSize(resized) / 2;
+            const dx = group.center.x - half - resized.position.x;
+            const dy = group.center.y - half - resized.position.y;
+            set({
+              nodes: get().nodes.map((n) => {
+                if (n.id === created.id) return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+                if (n.parentId === created.id) return { ...n, position: { x: n.position.x - dx, y: n.position.y - dy } };
+                return n;
+              }),
+            });
+          }
         }
       }
     }
-    set({ unresolvedGroups });
+
+    // Ungrouped cards go back to their saved positions.
+    const ungroupedPositions = new Map<string, { x: number; y: number }>();
+    for (const m of persisted.sessions ?? []) {
+      const resolved = resolve(m);
+      if (resolved && !claimed.has(resolved) && m.position) {
+        claimed.add(resolved);
+        ungroupedPositions.set(resolved, m.position);
+      }
+    }
+    set({
+      unresolvedGroups,
+      nodes: ungroupedPositions.size === 0 ? get().nodes : get().nodes.map((n) =>
+        !n.parentId && ungroupedPositions.has(n.id) ? { ...n, position: { ...ungroupedPositions.get(n.id)! } } : n
+      ),
+      ...(persisted.viewport ? { viewport: persisted.viewport, restoredViewport: persisted.viewport } : {}),
+    });
   },
 
   applySessionName: (sessionId: string, name: string) => {
