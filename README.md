@@ -161,9 +161,10 @@ pnpm dev
 Restarting the main process ends every running CLI session. Saved sessions are
 restored on startup, but their terminals start fresh.
 
-The first `pnpm dev` in a checkout pre-bundles dependencies and can show a blank
-window while that runs; reload the window once it finishes. If an edit doesn't
-show up, the file watcher may have missed it: save the file again.
+The window reloads itself right after launch (Forge's preload build sends a
+reload) and whenever Vite asks for one, such as after pre-bundling dependencies
+on the first `pnpm dev` in a checkout. If an edit doesn't show up, the file
+watcher may have missed it: save the file again.
 
 ### Checks and tests
 
@@ -185,7 +186,7 @@ node scripts/run-git-editor-e2e.cjs send-dialog-e2e.cjs
 ```
 
 Available scripts: `git-editor-e2e.cjs`, `send-dialog-e2e.cjs`,
-`session-node-e2e.cjs`, `desktop-priorities-e2e.cjs`,
+`session-node-e2e.cjs`, `group-node-e2e.cjs`, `desktop-priorities-e2e.cjs`,
 `workspace-artifacts-e2e.cjs`, `terminal-rendering-smoke.cjs` and
 `copilot-runtime-smoke.cjs`.
 
@@ -201,6 +202,7 @@ Available scripts: `git-editor-e2e.cjs`, `send-dialog-e2e.cjs`,
 - **Session resume** — resume previous Claude and Copilot sessions from the same launcher UX
 - **External session adoption** — discover and adopt running Claude/Copilot sessions
 - **Graphite dark / Stone light** — muted paired themes for the graph, explorers, and toolbar
+- **Groups** — gather sessions into colored circles by dragging; the target circle highlights blue (join) or red (leave) before you drop. When every session in a group works in the same directory, the directory is shown under the group name, and double-clicking inside the circle starts a new session there. Right-click the colored dot next to a group's name to pick its color
 - **Inline rename** — double-click any node to rename it
 
 Switch between Graphite and Stone in **Settings**; your choice persists across
@@ -245,11 +247,12 @@ Without summarization credentials, cross-session messaging still works: uncheck 
 ## Usage
 
 1. **Create sessions** — click "+ New Session" and pick a working directory
-2. **Arrange nodes** — drag session nodes freely on the canvas
-3. **Rename** — double-click a node label to rename it
-4. **Send messages** — hover a node, click the send icon to share context with another session. The icon is disabled until another live, writable session is open; read-only discovered CLIs can't receive messages
-5. **Duplicate** — hover a Claude node and click the Duplicate Session icon. The new session continues from a copy of the conversation (`claude --resume <id> --fork-session`) and the original is left unchanged. A session with no conversation yet opens an empty Claude session in the same directory
-6. **Resume** — use "Resume" under Claude or Copilot to continue a previous session
+2. **Arrange nodes** — drag session nodes freely on the canvas. The layout is saved automatically after every change (card and group positions, group names, colors and sizes, and the canvas pan and zoom) and comes back the same way after a restart
+3. **Group** — drop a session onto another ungrouped session to form a group, or onto a group's circle to join it; drag a member outside the circle to remove it. While you drag, the circle shows what releasing will do: a blue outline means the session joins that group, a red outline means it leaves. If all of a group's sessions share one working directory, that directory appears under the group's name (hover it for the full path), and double-clicking an empty spot inside the circle starts a new session in that directory at that spot and adds it to the group. The new session uses the CLI all the members use (a resumed Claude or Copilot session counts as Claude or Copilot), or Claude if they differ. Double-clicking the group's name still renames it. To recolor a group, right-click the dot next to its name and choose a palette color or a custom one; the color is saved with the group. To resize a group, drag its circle's edge: the circle grows or shrinks around its center, the sessions stay put, and the group stops auto-fitting to its members. Backspace and Delete never remove nodes from the canvas
+4. **Rename** — double-click a node label to rename it
+5. **Send messages** — hover a node, click the send icon to share context with another session. The icon is disabled until another live, writable session is open; read-only discovered CLIs can't receive messages
+6. **Duplicate** — hover a Claude node and click the Duplicate Session icon. The new session continues from a copy of the conversation (`claude --resume <id> --fork-session`) and the original is left unchanged. A session with no conversation yet opens an empty Claude session in the same directory. If the original is in a group, the copy joins that group
+7. **Resume** — use "Resume" under Claude or Copilot to continue a previous session
 
 The Explorer also provides a **Needs attention** box for sessions waiting for input.
 Click an item to review its terminal; this does not automatically approve requests.
@@ -317,6 +320,7 @@ agentplex/
 │   ├── renderer/
 │   │   ├── App.tsx                    # Root component; subscribes to IPC events
 │   │   ├── store.ts                   # Zustand store: sessions, nodes, edges, plans, tasks
+│   │   ├── group-drop.ts              # What dropping a dragged card does to groups
 │   │   ├── components/
 │   │   │   ├── GraphCanvas.tsx        # React Flow canvas
 │   │   │   ├── SessionNode.tsx        # Session card with send/duplicate/rename/delete actions

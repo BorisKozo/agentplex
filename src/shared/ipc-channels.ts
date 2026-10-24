@@ -235,11 +235,27 @@ export interface PersistedGroup {
   color: string;
   /** User-chosen circle diameter, when the bubble was manually resized. */
   manualSize?: number;
+  /** Absolute centre of the circle at save time, so a manually sized group returns
+   *  to the same spot even when its members aren't centred in it. */
+  center?: { x: number; y: number };
   members: PersistedGroupMember[];
 }
 
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+/** Saved canvas layout (groups.json): groups plus everything else visible on the
+ *  canvas that should survive a restart. */
 export interface PersistedGroups {
   groups: PersistedGroup[];
+  /** Positions of session cards that aren't in a group, matched to live sessions
+   *  the same way as group members. */
+  sessions?: PersistedGroupMember[];
+  /** Canvas pan and zoom. */
+  viewport?: CanvasViewport;
 }
 
 // ── Workspace template types ─────────────────────────────────────────────────

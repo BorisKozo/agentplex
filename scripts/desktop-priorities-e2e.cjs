@@ -23,7 +23,7 @@ async function rendererTest(repositoryRoot) {
   const React = require(require.resolve('react', { paths: [repositoryRoot] }));
   const { createRoot } = require(require.resolve('react-dom/client', { paths: [repositoryRoot] }));
   const { loadSource } = require(path.join(repositoryRoot, 'scripts', 'test-support.cjs'));
-  const { useAppStore } = loadSource('src/renderer/store.ts', {
+  const { useAppStore, isSendTarget } = loadSource('src/renderer/store.ts', {
     './components/panels/SettingsPanel': { getSplitPaneEnabled: () => false },
   });
   const projectRequests = [], sessionRequests = [], searches = [], cancellations = [], creates = [], saves = [];
@@ -279,7 +279,7 @@ async function rendererTest(repositoryRoot) {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await wait(() => !menu('Project actions'), 'Escape dismisses menu');
   const { SessionNode } = loadSource('src/renderer/components/SessionNode.tsx', {
-    '../store': { useAppStore }, '@xyflow/react': { Handle: () => null, Position: { Top: 'top', Bottom: 'bottom' } }, ...assets,
+    '../store': { useAppStore, isSendTarget }, '@xyflow/react': { Handle: () => null, Position: { Top: 'top', Bottom: 'bottom' } }, ...assets,
   });
   host.style.cssText = 'position:fixed;inset:0;overflow:auto';
   reactRoot.render(React.createElement(SessionNode, { id: 'menu-0', data: {

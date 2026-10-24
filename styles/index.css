@@ -52,6 +52,8 @@
   --color-warning-pulse-dim: var(--warning-pulse-dim);
   --color-error: var(--error);
   --color-error-subtle: var(--error-subtle);
+  --color-join-group: var(--join-group);
+  --color-leave-group: var(--leave-group);
   --color-shadow: var(--shadow);
   --color-shadow-heavy: var(--shadow-heavy);
   --color-backdrop: var(--backdrop);
@@ -114,6 +116,8 @@
   --warning-pulse-dim: rgba(207, 185, 145, 0.07);
   --error: #d69c9c;
   --error-subtle: rgba(214, 156, 156, 0.12);
+  --join-group: #5b9cf5;
+  --leave-group: #f06565;
   --grid: #39414a;
   --edge: #718397;
   --node-radius: 9px;
@@ -149,6 +153,8 @@
   --warning-pulse-dim: rgba(128, 101, 60, 0.07);
   --error: #a14f4f;
   --error-subtle: rgba(161, 79, 79, 0.09);
+  --join-group: #2563eb;
+  --leave-group: #dc2626;
   --grid: #c6c2b8;
   --edge: #7a8579;
   --node-radius: 13px;
@@ -313,18 +319,94 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 
 [data-theme="light"] .graph-group { border-style: dashed; }
+
+/* Drag preview: releasing now would add the session to (join) or remove it from (leave) this group. */
+.graph-group[data-drop="join"],
+.graph-group[data-drop="leave"] {
+  --drop-color: var(--join-group);
+  border: 2px solid var(--drop-color);
+  background: color-mix(in srgb, var(--drop-color) 8%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--drop-color) 18%, transparent);
+  transition: border-color 120ms, box-shadow 120ms, background-color 120ms;
+}
+.graph-group[data-drop="leave"] { --drop-color: var(--leave-group); }
 .graph-group__label {
   background: var(--bg-canvas);
   color: var(--text-muted);
   border: 1px solid var(--border);
 }
 
-.graph-group__label::before {
-  content: "";
+.graph-group__directory {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+/* Group edge resize handle: a soft band appears on hover and while resizing. */
+.graph-group__edge-ring { transition: stroke 120ms; }
+.graph-group__edge-ring:hover,
+.graph-group[data-resizing="true"] .graph-group__edge-ring {
+  stroke: color-mix(in srgb, var(--group-color) 30%, transparent);
+}
+
+/* Group color dot; padding widens the right-click target without enlarging the dot. */
+.graph-group__swatch {
+  box-sizing: content-box;
   width: 5px;
   height: 5px;
+  padding: 3px;
+  margin: -3px;
   border-radius: 50%;
   background: var(--group-color);
+  background-clip: content-box;
+  cursor: context-menu;
+  flex-shrink: 0;
+}
+
+.group-color-picker {
+  min-width: 0;
+  padding: 8px;
+}
+
+.group-color-picker__swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 20px);
+  gap: 6px;
+}
+
+.group-color-picker__swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.group-color-picker__swatch:hover { border-color: var(--border-strong); }
+
+.group-color-picker__swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--bg-elevated), 0 0 0 3px var(--text-primary);
+}
+
+.group-color-picker__custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.group-color-picker__custom input[type="color"] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
 }
 
 .react-flow__node {
