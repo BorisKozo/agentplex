@@ -133,7 +133,11 @@ export const SessionNode = memo(function SessionNode({ data, id, parentId }: Nod
     duplicatingRef.current = true;
     setDuplicating(true);
     try {
-      addSession(await window.agentPlex.forkSession(nodeData.sessionId));
+      const copy = await window.agentPlex.forkSession(nodeData.sessionId);
+      addSession(copy);
+      // The copy joins the source's group (as it is now, after the fork finished).
+      const groupId = useAppStore.getState().nodes.find((n) => n.id === id)?.parentId;
+      if (groupId) addToGroup(groupId, copy.id, { reposition: true });
     } catch (error) {
       console.error('[duplicate] Failed to duplicate session:', error);
     } finally {

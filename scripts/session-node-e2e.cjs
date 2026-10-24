@@ -98,7 +98,23 @@ async function rendererTest(repositoryRoot) {
   assert.ok(useAppStore.getState().nodes.some(n => n.id === 'a-copy'), 'copy added to the graph');
   await wait(() => !duplicateButton().disabled, 're-enabled after duplicating');
   assert.equal(useAppStore.getState().openPanes.includes('a'), false, 'clicking does not select the source card');
+  assert.equal(useAppStore.getState().nodes.find(n => n.id === 'a-copy').parentId, undefined, 'ungrouped source, ungrouped copy');
   results.duplicateForksOnce = true;
+
+  // A copy of a grouped session joins the same group.
+  useAppStore.setState({ sessions: {} });
+  for (const id of ['a', 'b']) useAppStore.getState().addSession(session(id, { pid: 1, startedAt: Date.now() }));
+  useAppStore.getState().createGroupWithMembers(['a', 'b']);
+  const groupId = useAppStore.getState().nodes.find(n => n.id === 'a').parentId;
+  assert.ok(groupId, 'source is grouped');
+  forkCalls.length = 0;
+  await wait(() => !duplicateButton().disabled, 'duplicate enabled for the grouped source');
+  duplicateButton().click();
+  await wait(() => forkCalls.length > 0, 'grouped fork requested');
+  resolveFork(session('a-copy-2', { pid: 2, startedAt: Date.now() }));
+  await wait(() => useAppStore.getState().nodes.find(n => n.id === 'a-copy-2')?.parentId === groupId,
+    'copy joins the source group');
+  results.duplicateJoinsGroup = true;
 
   reactRoot.unmount();
   return results;
