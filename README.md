@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/AlexPeppas/agentplex/releases/latest"><strong>Download for Windows</strong></a> &nbsp;|&nbsp;
-  <a href="#build-from-source">Build from source</a>
+  <a href="#build-from-source"><strong>Build from source</strong></a> &nbsp;|&nbsp;
+  <a href="#development">Development</a>
 </p>
 
 > **About this project:** this repository is based on [AlexPeppas/agentplex](https://github.com/AlexPeppas/agentplex), but it is developed independently and is going in a different direction. Changes here are not contributed back to the original project, and the two may diverge in features and behavior.
@@ -24,15 +24,13 @@
 
 ## Quick Start
 
-Download **AgentPlex.exe** from the [latest release](https://github.com/AlexPeppas/agentplex/releases/latest) and run it. That's it.
-
-> **macOS / Linux**: Pre-built binaries coming soon. For now, [build from source](#build-from-source).
+This project doesn't publish pre-built installers yet, so [build from source](#build-from-source) on Windows, macOS or Linux. When releases are published, they'll appear on this repository's [Releases](https://github.com/BorisKozo/agentplex/releases) page.
 
 ## Installation
 
 <a id="build-from-source"></a>
 
-If you prefer to build from source instead of using the installer:
+Clone the repository, install dependencies, and start the app:
 
 ```bash
 git clone https://github.com/BorisKozo/agentplex.git
@@ -47,7 +45,7 @@ changes trigger a rebuild; missing or modified build outputs are rebuilt too.
 The global `agentplex` command uses the same launcher. Build files stay in
 the ignored `.vite` directory; saved sessions are not part of the build cache.
 
-For development with Vite live reload, use `pnpm dev` instead.
+For development with live reload, use `pnpm dev` instead (see [Development](#development)).
 
 To build a distributable installer:
 
@@ -142,12 +140,62 @@ Building from source requires [Node.js](https://nodejs.org/) 20+ and native buil
 
 pnpm is pinned via `packageManager` in package.json. If you have [corepack](https://nodejs.org/api/corepack.html) enabled (`corepack enable`), it will auto-install the correct version. Otherwise install pnpm directly: `npm install -g pnpm`.
 
+<a id="development"></a>
+
+## Development
+
+### Live reload
+
+```bash
+pnpm dev
+```
+
+`pnpm dev` runs Electron Forge with the Vite dev server:
+
+| You edit | What happens |
+| --- | --- |
+| Renderer (`src/renderer/**`, `styles/`) | Hot-reloads in place |
+| Preload (`src/preload/preload.ts`) | The window reloads automatically |
+| Main process (`src/main/**`) | Rebuilt, then type `rs` in the dev terminal to restart |
+
+Restarting the main process ends every running CLI session. Saved sessions are
+restored on startup, but their terminals start fresh.
+
+The first `pnpm dev` in a checkout pre-bundles dependencies and can show a blank
+window while that runs; reload the window once it finishes. If an edit doesn't
+show up, the file watcher may have missed it: save the file again.
+
+### Checks and tests
+
+```bash
+pnpm lint      # ESLint over src/
+pnpm test      # node:test suites in scripts/*.test.cjs
+```
+
+The unit tests compile individual modules with the project's TypeScript and
+replace native and Electron services with fakes, so they run without launching
+the app. Type checking is not part of `pnpm test`; run it with
+`pnpm exec tsc --noEmit`.
+
+Electron end-to-end tests render real components in a hidden window. Run one at
+a time through the runner, which creates an isolated temporary profile:
+
+```bash
+node scripts/run-git-editor-e2e.cjs send-dialog-e2e.cjs
+```
+
+Available scripts: `git-editor-e2e.cjs`, `send-dialog-e2e.cjs`,
+`session-node-e2e.cjs`, `desktop-priorities-e2e.cjs`,
+`workspace-artifacts-e2e.cjs`, `terminal-rendering-smoke.cjs` and
+`copilot-runtime-smoke.cjs`.
+
 ## Features
 
 - **Multi-session management** — run multiple Claude/Codex/Copilot CLI sessions side by side
 - **Graph canvas** — drag, arrange, and connect session nodes on a visual canvas
 - **HITL notifications** — get notified when a CLI session requires human input
 - **Cross-session messaging** — send messages between sessions with optional GitHub Copilot or Haiku summarization
+- **Duplicate Session** — fork a Claude session's conversation into a new session in the same directory
 - **Sub-agent tracking** — visualize spawned sub-agents via JSONL transcript tailing
 - **Plan & task visualization** — see plans and task lists rendered in the graph
 - **Session resume** — resume previous Claude and Copilot sessions from the same launcher UX
@@ -199,8 +247,9 @@ Without summarization credentials, cross-session messaging still works: uncheck 
 1. **Create sessions** — click "+ New Session" and pick a working directory
 2. **Arrange nodes** — drag session nodes freely on the canvas
 3. **Rename** — double-click a node label to rename it
-4. **Send messages** — hover a node, click the send icon to share context with another session
-5. **Resume** — use "Resume" under Claude or Copilot to continue a previous session
+4. **Send messages** — hover a node, click the send icon to share context with another session. The icon is disabled until another live, writable session is open; read-only discovered CLIs can't receive messages
+5. **Duplicate** — hover a Claude node and click the Duplicate Session icon. The new session continues from a copy of the conversation (`claude --resume <id> --fork-session`) and the original is left unchanged. A session with no conversation yet opens an empty Claude session in the same directory
+6. **Resume** — use "Resume" under Claude or Copilot to continue a previous session
 
 The Explorer also provides a **Needs attention** box for sessions waiting for input.
 Click an item to review its terminal; this does not automatically approve requests.
@@ -242,37 +291,57 @@ clipboard through terminal escape sequences. Clipboard writes are limited to
 ```
 agentplex/
 ├── src/
-│   ├── main/                # Electron main process
-│   │   ├── main.ts          # App entry point & window management
-│   │   ├── session-manager.ts   # PTY session lifecycle
-│   │   ├── ipc-handlers.ts      # IPC bridge between main & renderer
-│   │   ├── jsonl-session-watcher.ts # Claude/Copilot event tailing (sub-agent, plan, tasks, HITL)
-│   │   ├── plan-task-detector.ts # Claude terminal parsing for plan/tasks
-│   │   ├── claude-session-scanner.ts # Claude project/session discovery + transcript rendering
-│   │   └── copilot-session-scanner.ts # Copilot project/session discovery + transcript rendering
+│   ├── main/                          # Electron main process
+│   │   ├── main.ts                    # App entry, window, CSP, single-instance lock
+│   │   ├── application-instance.ts    # Native app lock shared by dev and packaged builds
+│   │   ├── session-manager.ts         # PTY spawn/kill, resume, fork, restore, status loop, discovery
+│   │   ├── ipc-handlers.ts            # Renderer bridge: sessions, launcher, git, settings, templates
+│   │   ├── jsonl-session-watcher.ts   # Claude/Copilot event tailing (sub-agents, plans, tasks, HITL)
+│   │   ├── plan-task-detector.ts      # Claude terminal parsing for plans and tasks
+│   │   ├── claude-session-scanner.ts  # Claude project/session discovery and transcript rendering
+│   │   ├── copilot-session-scanner.ts # Copilot project/session discovery and transcript rendering
+│   │   ├── copilot-session-discovery.ts # Finds Copilot CLIs running outside AgentPlex
+│   │   ├── copilot-lifecycle.ts       # Copilot running/idle/needs-attention state from events
+│   │   ├── copilot-summary-proxy.ts   # Copilot-backed summaries for cross-session messages
+│   │   ├── config-loader.ts           # Claude launcher command and flags
+│   │   ├── settings-manager.ts        # Persisted app settings
+│   │   ├── shell-detector.ts          # Available shells and versions
+│   │   ├── git-operations.ts          # Git status, diff, stage, commit, push
+│   │   ├── session-search.ts          # Search across saved Claude/Copilot sessions
+│   │   ├── history-reader.ts          # Chunked reads of large transcript files
+│   │   ├── workspace-files.ts         # Workspace tree listing and scoped file reads
+│   │   ├── office-preview*.ts         # Sandboxed Word/Excel preview parsing in a worker
+│   │   └── preview-navigation.ts      # Blocks navigation from preview content
 │   ├── preload/
-│   │   └── preload.ts       # Context bridge for renderer
+│   │   └── preload.ts                 # Context bridge (window.agentPlex)
 │   ├── renderer/
-│   │   ├── App.tsx           # Root React component
-│   │   ├── store.ts          # Zustand state management
-│   │   ├── components/       # UI components
-│   │   │   ├── GraphCanvas.tsx   # React Flow canvas
-│   │   │   ├── SessionNode.tsx   # Session graph node
-│   │   │   ├── SubAgentNode.tsx  # Sub-agent graph node
-│   │   │   ├── GroupNode.tsx     # Group container node
-│   │   │   ├── SendDialog.tsx    # Cross-session messaging
-│   │   │   ├── TerminalPanel.tsx # xterm.js terminal
-│   │   │   ├── Toolbar.tsx       # Top toolbar
-│   │   │   └── StatusIndicator.tsx
-│   │   └── hooks/
-│   │       └── useTerminal.ts    # Terminal lifecycle hook
-│   └── shared/               # Shared utilities
-│       ├── ansi-strip.ts
-│       └── ipc-channels.ts
-├── styles/
-│   └── index.css             # Global styles
-├── bin/
-│   └── agentplex.mjs         # CLI entry point
+│   │   ├── App.tsx                    # Root component; subscribes to IPC events
+│   │   ├── store.ts                   # Zustand store: sessions, nodes, edges, plans, tasks
+│   │   ├── components/
+│   │   │   ├── GraphCanvas.tsx        # React Flow canvas
+│   │   │   ├── SessionNode.tsx        # Session card with send/duplicate/rename/delete actions
+│   │   │   ├── SubAgentNode.tsx, GroupNode.tsx
+│   │   │   ├── SendDialog.tsx         # Cross-session messaging
+│   │   │   ├── TerminalPanel.tsx      # xterm.js terminal panes
+│   │   │   ├── GitDiffPanel.tsx       # Monaco-based diff and commit panel
+│   │   │   ├── ProjectLauncher.tsx    # New/resume session launcher
+│   │   │   ├── WorkspaceExplorer.tsx, ArtifactPreview.tsx, *Preview.tsx
+│   │   │   ├── Toolbar.tsx, ActivityBar.tsx, SidePanel.tsx, AttentionBox.tsx
+│   │   │   └── panels/                # Explorer, Search, Templates, Settings
+│   │   ├── hooks/                     # useTerminal, useViewportMenu
+│   │   └── session-explorer.ts, terminal-resize.ts
+│   └── shared/                        # Used by main and renderer
+│       ├── ipc-channels.ts            # IPC channel names and shared types
+│       ├── ansi-strip.ts, conversation-identity.ts
+│       └── artifact-formats.ts, artifact-links.ts
+├── scripts/
+│   ├── start.mjs, startup-cache.mjs   # pnpm start launcher with build reuse
+│   ├── *.test.cjs                     # Unit tests (pnpm test)
+│   ├── *-e2e.cjs, *-smoke.cjs         # Electron end-to-end tests
+│   └── run-git-editor-e2e.cjs         # Runner for the Electron tests
+├── styles/index.css                   # Global styles and themes
+├── bin/agentplex.mjs                  # Global `agentplex` command
+├── forge.config.ts                    # Electron Forge packaging
 └── package.json
 ```
 
@@ -287,10 +356,6 @@ agentplex/
 | State | [Zustand](https://zustand-demo.pmnd.rs/) |
 | PTY backend | [node-pty](https://github.com/microsoft/node-pty) |
 | Summarization | [Anthropic SDK](https://docs.anthropic.com/en/docs/sdks) (optional) |
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 

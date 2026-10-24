@@ -36,7 +36,7 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({ setupExe: 'AgentPlex.exe', setupIcon: 'assets/logo.ico', loadingGif: 'assets/installer.gif', iconUrl: 'https://raw.githubusercontent.com/AlexPeppas/agentplex/master/assets/logo.ico' }),
+    new MakerSquirrel({ setupExe: 'AgentPlex.exe', setupIcon: 'assets/logo.ico', loadingGif: 'assets/installer.gif', iconUrl: 'https://raw.githubusercontent.com/BorisKozo/agentplex/master/assets/logo.ico' }),
     new MakerZIP({}, ['darwin']),
   ],
   plugins: [
