@@ -94,41 +94,20 @@ agentplex            # launch from anywhere
 
 To remove: `pnpm unlink --global agentplex`
 
-### Native file previews
+### Opening workspace files
 
-Open a file from the session workspace tree, or click a supported local file path
-in terminal output, to preview it in a read-only session tab. Markdown links can
-also open other local files within the session workspace.
+Open a file from the session workspace tree, or click a local file path in
+terminal output, to view it as read-only plain text in a session tab. Nothing is
+rendered or executed: Markdown, HTML, CSV, JSON and Mermaid files show their
+source text. Use **Reload** to pick up changes on disk.
 
-| Files | Preview |
-| --- | --- |
-| `.md`, `.markdown` | Formatted Markdown, tables and fenced Mermaid diagrams |
-| `.json` | Formatted JSON with explicit parse errors |
-| `.html`, `.htm` | Sandboxed HTML with scripts, navigation and network resources disabled |
-| `.pdf` | Native PDF reader with page navigation and zoom |
-| `.csv`, `.tsv` | Scrollable tables preserving quoted and multiline values |
-| `.docx` | Word headings, paragraphs, lists and tables; not exact page layout |
-| `.doc` | Legacy Word text, including headers, footers and notes; no original page layout |
-| `.xlsx` | Workbook sheet tabs and cell values; formulas show saved results and are never calculated |
-| `.mmd`, `.mermaid` | Locally rendered Mermaid diagram with a source toggle |
-| `.txt`, `.log`, `.yaml`, `.yml`, `.xml`, `.toml`, `.ini`, `.conf`, `.config`, `.jsonl`, `.ndjson` | Plain text |
-| Common source files (`.ts`, `.tsx`, `.js`, `.jsx`, `.py`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.cs`, `.css`, `.sql`, `.sh`, `.ps1`, etc.) | Read-only source text, never executed |
-
-Text files are limited to **1 MiB**, decoded as UTF-8 or BOM-marked UTF-16.
-PDF and Office input files are limited to **20 MiB**. Office conversion runs in
-bounded background workers with a 15-second timeout; ZIP-based Office documents
-are limited to 2,000 archive entries and 40 MiB of expanded content. Extracted
-Word output is limited to 2 MiB.
-
-Table previews show at most 1,000 rows and 100 columns per sheet, 20 sheets and
-20,000 cells total; a notice identifies truncated previews. Word images, embedded
-objects and active links are disabled. Encrypted documents and legacy `.xls`
-workbooks are not supported. Mermaid configuration directives, interactive links
-and network references are disabled; diagrams are limited to 50,000 characters
-and 500 edges. Unsupported, malformed and oversized files show an explicit error.
-
-Previews remain scoped to the selected workspace and that session's artifact
-directory. They do not require Microsoft Office or an external editor.
+Text and source files open, including `.txt`, `.log`, `.md`, `.json`, `.jsonl`,
+`.yaml`, `.xml`, `.toml`, `.ini`, `.html`, `.csv`, `.tsv`, `.mmd` and common code
+files (`.ts`, `.tsx`, `.js`, `.py`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.cs`,
+`.css`, `.sql`, `.sh`, `.ps1` and others). Files are limited to **1 MiB**, decoded
+as UTF-8 or BOM-marked UTF-16. Other file types, binary content and oversized
+files show an explicit error. Files stay scoped to the selected workspace and
+that session's artifact directory. To compare changes, use the session's Git tab.
 
 ## Dev Requirements
 
@@ -287,8 +266,7 @@ agentplex/
 │   │   ├── session-search.ts          # Search across saved Claude/Copilot sessions
 │   │   ├── history-reader.ts          # Chunked reads of large transcript files
 │   │   ├── workspace-files.ts         # Workspace tree listing and scoped file reads
-│   │   ├── office-preview*.ts         # Sandboxed Word/Excel preview parsing in a worker
-│   │   └── preview-navigation.ts      # Blocks navigation from preview content
+│   │   └── preview-navigation.ts      # Blocks navigation away from the app page
 │   ├── preload/
 │   │   └── preload.ts                 # Context bridge (window.agentPlex)
 │   ├── renderer/
@@ -303,7 +281,7 @@ agentplex/
 │   │   │   ├── TerminalPanel.tsx      # xterm.js terminal panes
 │   │   │   ├── GitDiffPanel.tsx       # Monaco-based diff and commit panel
 │   │   │   ├── ProjectLauncher.tsx    # New/resume session launcher
-│   │   │   ├── WorkspaceExplorer.tsx, ArtifactPreview.tsx, *Preview.tsx
+│   │   │   ├── WorkspaceExplorer.tsx, ArtifactPreview.tsx (read-only text view)
 │   │   │   ├── Toolbar.tsx, ActivityBar.tsx, SidePanel.tsx, AttentionBox.tsx
 │   │   │   └── panels/                # Explorer, Search, Templates, Settings
 │   │   ├── hooks/                     # useTerminal, useViewportMenu

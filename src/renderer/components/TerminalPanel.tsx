@@ -193,7 +193,7 @@ function TerminalPane({ sessionId }: { sessionId: string }) {
       )}
       {files.map(reference => <div key={reference} className="flex-1 min-h-0 overflow-hidden" style={{ display: terminalTab === `file:${reference}` ? undefined : 'none' }}>
         <Suspense fallback={<div className="p-4 text-fg-muted">Loading preview...</div>}>
-          <ArtifactPreview sessionId={sessionId} cwd={session?.cwd || ''} reference={reference} onOpenFile={openFile} />
+          <ArtifactPreview sessionId={sessionId} cwd={session?.cwd || ''} reference={reference} />
         </Suspense>
       </div>)}
       </div>

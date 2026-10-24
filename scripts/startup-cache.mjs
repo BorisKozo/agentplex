@@ -40,7 +40,7 @@ async function outputSnapshot(root) {
   const directories = [path.join(root, '.vite', 'build'), path.join(root, '.vite', 'renderer')];
   try {
     const files = (await Promise.all(directories.map(filesIn))).flat().sort();
-    for (const required of ['build/main.js', 'build/preload.js', 'build/office-preview-worker.js', 'renderer/main_window/index.html']) {
+    for (const required of ['build/main.js', 'build/preload.js', 'renderer/main_window/index.html']) {
       await fs.access(path.join(root, '.vite', required));
     }
     return await Promise.all(files.map(async filename => {

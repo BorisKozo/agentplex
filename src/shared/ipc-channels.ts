@@ -280,19 +280,12 @@ export interface WorkspaceDirectory {
   truncated: boolean;
 }
 
-export type WorkspaceFile = {
+/** A workspace file opened as read-only text. */
+export interface WorkspaceFile {
   path: string;
   name: string;
-} & ({
-  kind: 'json' | 'markdown' | 'html' | 'text' | 'mermaid';
   content: string;
-} | {
-  kind: 'pdf';
-  base64: string;
-} | {
-  kind: 'table';
-  sheet: import('./artifact-formats').PreviewSheet;
-} | import('./artifact-formats').OfficePreview);
+}
 
 export const IPC = {
   CLIPBOARD_WRITE: 'clipboard:write',

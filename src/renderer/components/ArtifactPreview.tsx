@@ -1,15 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useEffect, useState } from 'react';
 import type { WorkspaceFile } from '../../shared/ipc-channels';
-import { artifactHtmlDocument, resolveArtifactLink } from '../../shared/artifact-links';
-import { TablePreview } from './TablePreview';
 
-const PdfPreview = lazy(() => import('./PdfPreview').then(module => ({ default: module.PdfPreview })));
-const MermaidPreview = lazy(() => import('./MermaidPreview').then(module => ({ default: module.MermaidPreview })));
-
-export function ArtifactPreview({ sessionId, cwd, reference, onOpenFile }: {
-  sessionId: string; cwd: string; reference: string; onOpenFile: (reference: string) => void;
+/** A workspace file shown as read-only plain text. */
+export function ArtifactPreview({ sessionId, cwd, reference }: {
+  sessionId: string; cwd: string; reference: string;
 }) {
   const [file, setFile] = useState<WorkspaceFile | null>(null);
   const [error, setError] = useState('');
@@ -23,12 +17,6 @@ export function ArtifactPreview({ sessionId, cwd, reference, onOpenFile }: {
       .catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => { cancelled = true; };
   }, [sessionId, cwd, reference, revision]);
-  let json = '';
-  let jsonError = '';
-  if (file?.kind === 'json') {
-    try { json = JSON.stringify(JSON.parse(file.content), null, 2); }
-    catch (reason) { jsonError = `Invalid JSON: ${reason instanceof Error ? reason.message : String(reason)}`; json = file.content; }
-  }
   return (
     <section aria-label="File preview" className="h-full flex flex-col min-h-0 text-fg bg-surface">
       <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs border-b border-border">
@@ -38,55 +26,7 @@ export function ArtifactPreview({ sessionId, cwd, reference, onOpenFile }: {
       </div>
       {error && <div role="alert" className="p-4 text-red-400 break-words">{error}</div>}
       {!file && !error && <div className="p-4 text-fg-muted">Loading file...</div>}
-      {file?.kind === 'text' && <pre className="overflow-auto p-4 text-xs whitespace-pre-wrap break-words">{file.content}</pre>}
-      {file?.kind === 'table' && <TablePreview key={`${file.path}:${revision}`} sheets={[file.sheet]} />}
-      {file?.kind === 'workbook' && <TablePreview key={`${file.path}:${revision}`} sheets={file.sheets} truncated={file.truncated} />}
-      {file?.kind === 'document' && <>
-        <div className="shrink-0 max-h-24 overflow-auto text-xs text-fg-muted px-3 py-2">
-          {file.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
-        </div>
-        {file.format === 'text' ? <pre className="overflow-auto p-4 text-sm whitespace-pre-wrap break-words">{file.content}</pre>
-          : <iframe title={`Word preview: ${file.name}`} sandbox="" referrerPolicy="no-referrer"
-            className="flex-1 w-full border-0 bg-white" srcDoc={artifactHtmlDocument(file.content)} />}
-      </>}
-      {file?.kind === 'mermaid' && <Suspense fallback={<div className="p-4 text-fg-muted">Loading diagram renderer...</div>}>
-        <MermaidPreview key={`${file.path}:${revision}`} content={file.content} />
-      </Suspense>}
-      {file?.kind === 'pdf' && <Suspense fallback={<div className="p-4 text-fg-muted">Loading PDF reader...</div>}>
-        <PdfPreview key={revision} base64={file.base64} />
-      </Suspense>}
-      {file?.kind === 'json' && <div className="overflow-auto p-4 text-xs">
-        {jsonError && <div role="alert" className="text-red-400 mb-3">{jsonError}</div>}
-        <pre>{json}</pre>
-      </div>}
-      {file?.kind === 'markdown' && (
-        <article className="artifact-markdown overflow-auto p-4 text-sm leading-relaxed">
-          <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} urlTransform={url =>
-            /^(?:https?:|file:)/i.test(url) || /^[a-z]:[\\/]/i.test(url) || !/^[a-z][a-z\d+.-]*:/i.test(url) ? url : ''
-          } components={{
-            pre: ({ children, node }) => node?.children.some(child => child.type === 'element'
-              && child.tagName === 'code' && Array.isArray(child.properties.className)
-              && child.properties.className.includes('language-mermaid'))
-              ? <div>{children}</div> : <pre>{children}</pre>,
-            code: ({ className, children }) => className === 'language-mermaid'
-              ? <Suspense fallback={<span>Loading diagram renderer...</span>}><MermaidPreview content={String(children)} /></Suspense>
-              : <code className={className}>{children}</code>,
-            a: ({ href, children }) => <a href={href} className="text-accent underline" onClick={event => {
-              event.preventDefault();
-              if (!href || href.startsWith('#')) return;
-              if (/^https?:/i.test(href)) {
-                window.agentPlex.openExternal(href).catch(reason => setError(String(reason)));
-              } else onOpenFile(resolveArtifactLink(file.path, href));
-            }}>{children}</a>,
-            img: ({ alt }) => <span className="text-fg-muted">[Image: {alt || 'not loaded in preview'}]</span>,
-          }}>{file.content}</ReactMarkdown>
-        </article>
-      )}
-      {file?.kind === 'html' && <>
-        <div className="text-xs text-fg-muted px-3 py-1">Sandboxed HTML: scripts, forms, navigation and network resources disabled.</div>
-        <iframe title={`HTML preview: ${file.name}`} sandbox="" referrerPolicy="no-referrer"
-          className="flex-1 w-full border-0 bg-white" srcDoc={artifactHtmlDocument(file.content)} />
-      </>}
+      {file && <pre className="overflow-auto p-4 text-xs whitespace-pre-wrap break-words">{file.content}</pre>}
     </section>
   );
 }
