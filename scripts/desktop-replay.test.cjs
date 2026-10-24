@@ -6,7 +6,7 @@ function fixture(t) {
   const { useAppStore, serializeGroups } = loadSource('src/renderer/store.ts', {
     './components/panels/SettingsPanel': { getSplitPaneEnabled: () => false },
   });
-  const effects = [], noop = () => {};
+  const effects = [], saves = [], listeners = {}, noop = () => {};
   let resolveList, resolveSnapshot, rejectSnapshot, receiveData, receiveCreated, receiveRemoved;
   const info = { id: 'session', title: 'Synthetic', status: 'idle', cli: 'copilot', cwd: process.cwd(),
     startedAt: Date.now(), lastActivityAt: Date.now() };
@@ -14,7 +14,7 @@ function fixture(t) {
     listSessions: () => new Promise(resolve => { resolveList = resolve; }),
     getDisplayNames: async () => ({}),
     getSessionBufferSnapshot: () => new Promise((resolve, reject) => { resolveSnapshot = resolve; rejectSnapshot = reject; }),
-    groupsLoad: async () => ({ version: 1, groups: [] }), groupsSave: async () => {},
+    groupsLoad: async () => ({ version: 1, groups: [] }), groupsSave: async data => { saves.push(data); },
     onSessionData: callback => { receiveData = callback; return noop; },
     onSessionCreated: callback => { receiveCreated = callback; return noop; },
     onSessionRemoved: callback => { receiveRemoved = callback; return noop; },
@@ -23,7 +23,9 @@ function fixture(t) {
     'onSubagentSpawn', 'onSubagentComplete', 'onPlanEnter', 'onPlanExit', 'onTaskCreate',
     'onTaskUpdate', 'onTaskList', 'onAppWake']) api[name] = () => noop;
   const oldWindow = global.window;
-  global.window = { agentPlex: api, addEventListener: noop, removeEventListener: noop };
+  global.window = { agentPlex: api,
+    addEventListener: (name, callback) => { listeners[name] = callback; },
+    removeEventListener: (name, callback) => { if (listeners[name] === callback) delete listeners[name]; } };
   const store = Object.assign(select => select(useAppStore.getState()), {
     getState: useAppStore.getState, setState: useAppStore.setState, subscribe: useAppStore.subscribe,
   });
@@ -45,7 +47,7 @@ function fixture(t) {
     else global.window = oldWindow;
   });
   return {
-    store: useAppStore, info,
+    store: useAppStore, info, saves, listeners,
     created: session => receiveCreated(session),
     removed: id => receiveRemoved({ id }),
     output: (data, offset, id = info.id) => receiveData({ id, data, offset }),
@@ -135,4 +137,40 @@ test('a stale reconnect list or created event cannot resurrect an already remove
   await f.list();
   assert.equal(f.store.getState().sessions.session, undefined);
   assert.equal(f.store.getState().buffersReady, true);
+});
+
+test('the canvas layout autosaves 500 ms after a visible change, and flushes on window close', async t => {
+  const f = fixture(t);
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  await f.list();
+  await f.snapshot('', 0);
+  await settle();
+  assert.equal(typeof f.listeners.beforeunload, 'function', 'flush registered for window close');
+
+  f.store.getState().setViewport({ x: 10, y: 20, zoom: 0.8 });
+  f.store.getState().setViewport({ x: 11, y: 20, zoom: 0.8 });
+  assert.equal(f.saves.length, 0, 'debounced, not written immediately');
+  await new Promise(resolve => setTimeout(resolve, 650));
+  assert.equal(f.saves.length, 1, 'rapid changes collapse into one write');
+  assert.deepEqual(f.saves[0].viewport, { x: 11, y: 20, zoom: 0.8 });
+
+  f.store.getState().setViewport({ x: 11, y: 20, zoom: 0.8 });
+  f.store.getState().addSession({ ...f.info, id: 'second' });
+  f.listeners.beforeunload();
+  assert.equal(f.saves.length, 2, 'a change made just before closing is written at once');
+  assert.ok(f.saves[1].sessions.some(s => s.sessionId === 'second'), 'a new session card is saved');
+  f.listeners.beforeunload();
+  assert.equal(f.saves.length, 2, 'nothing pending, nothing written');
+
+  f.store.getState().setViewport({ x: 11, y: 20, zoom: 0.8 });
+  await new Promise(resolve => setTimeout(resolve, 650));
+  assert.equal(f.saves.length, 2, 'an identical layout is not rewritten');
+});
+
+test('nothing is saved before the persisted layout has been restored', async t => {
+  const f = fixture(t);
+  f.store.getState().setViewport({ x: 1, y: 1, zoom: 1 });
+  f.listeners.beforeunload?.();
+  await new Promise(resolve => setTimeout(resolve, 650));
+  assert.deepEqual(f.saves, [], 'startup never overwrites groups.json with a partial layout');
 });

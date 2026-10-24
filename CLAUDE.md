@@ -44,6 +44,7 @@ Multi-session desktop orchestrator for Claude, Copilot, Codex, and shell session
 - Group resize: there is no resize box. Dragging the circle's edge (an SVG ring in `GroupNode.tsx`, marked `nodrag` so React Flow doesn't move the group) calls `resizeGroup(id, size, { recenter: true, keepMembersInPlace: true })`. That keeps the center and the member cards fixed and sets `manualSize`, which turns off auto-fit.
 - Canvas layout persistence: `~/.agentplex/groups.json` (`PersistedGroups`) holds the whole canvas layout. That's groups (label, color, `manualSize`, `center`, member positions), `sessions` (ungrouped card positions) and `viewport` (pan/zoom, recorded on React Flow's `onMoveEnd`). `App.tsx` writes it through `serializeGroups()`, 500 ms after any change to nodes, sessions or viewport, and flushes on `beforeunload`. `restoreGroups()` applies it on startup, matching saved entries to live sessions by resume UUID (or id plus start time after a renderer reload), and hands the viewport to `GraphCanvas` through `restoredViewport`. Any resize during restore must pass `keepMembersInPlace`, or members drift on every restart (covered by `scripts/canvas-layout.test.cjs`). Session names and the session list live in the main process's `state.json`; drawings are saved separately. New visible canvas state should be added to this file.
 - `GraphCanvas.tsx` sets `deleteKeyCode={null}`, so keyboard deletion of selected nodes is turned off. Remove sessions and groups through their own actions.
+- Group tests: `scripts/group-features.test.cjs` covers `resolveDrop()` (exported for it), the drag hint, the canvas props (`deleteKeyCode`, viewport), `groupSharedDirectory()`, `setGroupColor()`, edge resize and the `--join-group`/`--leave-group` tokens. `scripts/desktop-replay.test.cjs` covers the autosave debounce and `beforeunload` flush. `scripts/group-node-e2e.cjs` renders the real `GroupNode` for the outline, shared-directory line, color picker and edge resize. Extend these when changing group behavior.
 
 ## Commands
 
@@ -54,7 +55,7 @@ pnpm dev            # live reload; type `rs` in its terminal to restart the main
 pnpm lint
 pnpm test           # node:test suites in scripts/*.test.cjs
 pnpm exec tsc --noEmit
-node scripts/run-git-editor-e2e.cjs <script>   # Electron e2e, e.g. send-dialog-e2e.cjs, session-node-e2e.cjs
+node scripts/run-git-editor-e2e.cjs <script>   # Electron e2e, e.g. send-dialog-e2e.cjs, session-node-e2e.cjs, group-node-e2e.cjs
 pnpm package
 pnpm make
 ```

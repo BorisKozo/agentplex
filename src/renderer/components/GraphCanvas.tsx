@@ -160,7 +160,7 @@ type DropAction =
 
 /** What releasing `draggedNode` at its current position does. Shared by the live
  *  drag preview and the drop itself so the highlight always matches the result. */
-function resolveDrop(draggedNode: Node): DropAction | null {
+export function resolveDrop(draggedNode: Node): DropAction | null {
   // Dragging a whole group node moves its members automatically (React Flow
   // parent/child) — nothing to reconcile.
   if (draggedNode.type !== 'sessionNode') return null;

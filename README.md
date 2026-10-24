@@ -185,7 +185,7 @@ node scripts/run-git-editor-e2e.cjs send-dialog-e2e.cjs
 ```
 
 Available scripts: `git-editor-e2e.cjs`, `send-dialog-e2e.cjs`,
-`session-node-e2e.cjs`, `desktop-priorities-e2e.cjs`,
+`session-node-e2e.cjs`, `group-node-e2e.cjs`, `desktop-priorities-e2e.cjs`,
 `workspace-artifacts-e2e.cjs`, `terminal-rendering-smoke.cjs` and
 `copilot-runtime-smoke.cjs`.
 
