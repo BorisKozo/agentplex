@@ -145,7 +145,7 @@ export interface AppState {
   // Grouping
   createGroup: (nodeIdA: string, nodeIdB: string) => void;
   createGroupWithMembers: (memberIds: string[], opts?: { label?: string; color?: string }) => void;
-  addToGroup: (groupId: string, nodeId: string, opts?: { reposition?: boolean }) => void;
+  addToGroup: (groupId: string, nodeId: string, opts?: { reposition?: boolean; center?: { x: number; y: number } }) => void;
   removeFromGroup: (nodeId: string) => void;
   recomputeGroup: (groupId: string) => void;
   resizeGroup: (groupId: string, size: number, opts?: { recenter?: boolean; keepMembersInPlace?: boolean }) => void;
@@ -334,6 +334,20 @@ export function groupSharedDirectory(
   };
   const first = normalize(dirs[0]!);
   return dirs.every((dir) => normalize(dir!) === first) ? dirs[0]! : null;
+}
+
+/** The CLI to start a new session in this group with: the one every member uses
+ *  (a resumed Claude or Copilot session counts as a new one of the same CLI), or
+ *  Claude when members differ or the group is empty. */
+export function groupSessionCli(
+  nodes: Node[],
+  sessions: Record<string, SessionInfo>,
+  groupId: string,
+): CliTool {
+  const clis = nodes
+    .filter((n) => n.parentId === groupId && n.type === 'sessionNode')
+    .map((n) => sessions[(n.data as SessionNodeData).sessionId]?.cli?.replace(/-resume$/, ''));
+  return clis.length > 0 && clis[0] && clis.every((cli) => cli === clis[0]) ? clis[0] : 'claude';
 }
 
 /** Serialize current groups into the persisted shape (membership keyed by both the
@@ -1017,7 +1031,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ nodes: sortGroupsFirst(base) });
   },
 
-  addToGroup: (groupId: string, nodeId: string, opts?: { reposition?: boolean }) => {
+  addToGroup: (groupId: string, nodeId: string, opts?: { reposition?: boolean; center?: { x: number; y: number } }) => {
     let base = detachFromGroup(get().nodes, nodeId);
     const group = base.find((n) => n.id === groupId);
     const node = base.find((n) => n.id === nodeId);
@@ -1026,7 +1040,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const size = groupSize(group);
     const nodeSz = getNodeSize(node);
     let abs: { x: number; y: number };
-    if (opts?.reposition && isManualGroup(group)) {
+    if (opts?.center) {
+      // Centre the card on a given canvas point (e.g. where the group was double-clicked).
+      abs = { x: opts.center.x - nodeSz.width / 2, y: opts.center.y - nodeSz.height / 2 };
+    } else if (opts?.reposition && isManualGroup(group)) {
       // Manual circle won't auto-grow, so drop the node inside, near the centre.
       abs = {
         x: group.position.x + size / 2 - nodeSz.width / 2,

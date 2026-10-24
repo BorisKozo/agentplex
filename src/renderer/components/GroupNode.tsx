@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import type { NodeProps } from '@xyflow/react';
-import { useAppStore, groupSharedDirectory, GROUP_COLORS, type GroupNodeData } from '../store';
+import { useAppStore, groupSharedDirectory, groupSessionCli, GROUP_COLORS, type GroupNodeData } from '../store';
 import { useViewportMenu } from '../hooks/useViewportMenu';
 
 /** Resize cursor for a point on the circle's edge, by its angle from the centre. */
@@ -21,6 +21,8 @@ export const GroupNode = memo(function GroupNode({ data, id }: NodeProps) {
   const renameGroup = useAppStore((s) => s.renameGroup);
   const resizeGroup = useAppStore((s) => s.resizeGroup);
   const setGroupColor = useAppStore((s) => s.setGroupColor);
+  const addSession = useAppStore((s) => s.addSession);
+  const addToGroup = useAppStore((s) => s.addToGroup);
   const viewportMoveCount = useAppStore((s) => s.viewportMoveCount);
   const dropHint = useAppStore((s) => (s.groupDragHint?.groupId === id ? s.groupDragHint.kind : undefined));
   // Special status: every member works in the same directory, shown under the name.
@@ -92,6 +94,35 @@ export const GroupNode = memo(function GroupNode({ data, id }: NodeProps) {
     setResizing(false);
   }, []);
 
+  // Double-clicking inside a shared-directory group starts a session there, placed
+  // where the circle was clicked, with the CLI the members use.
+  const creatingRef = useRef(false);
+  const handleGroupDoubleClick = useCallback(async (e: React.MouseEvent) => {
+    if (!sharedDirectory || creatingRef.current) return;
+    e.stopPropagation();
+    const el = groupRef.current!;
+    const rect = el.getBoundingClientRect();
+    const zoom = rect.width / el.offsetWidth;
+    const group = useAppStore.getState().nodes.find((n) => n.id === id);
+    if (!group) return;
+    const center = {
+      x: group.position.x + (e.clientX - rect.left) / zoom,
+      y: group.position.y + (e.clientY - rect.top) / zoom,
+    };
+    const state = useAppStore.getState();
+    const cli = groupSessionCli(state.nodes, state.sessions, id);
+    creatingRef.current = true;
+    try {
+      const info = await window.agentPlex.createSession(sharedDirectory, cli);
+      addSession(info);
+      addToGroup(id, info.id, { center });
+    } catch (error) {
+      console.error('[group] Failed to start a session in the group directory:', error);
+    } finally {
+      creatingRef.current = false;
+    }
+  }, [addSession, addToGroup, id, sharedDirectory]);
+
   const handleSwatchContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -132,11 +163,14 @@ export const GroupNode = memo(function GroupNode({ data, id }: NodeProps) {
   return (
     <div
       ref={groupRef}
-      className="graph-group relative w-full h-full rounded-full pointer-events-auto"
+      // `nopan` stops React Flow's double-click zoom where a double-click starts a session.
+      className={`graph-group relative w-full h-full rounded-full pointer-events-auto${sharedDirectory ? ' nopan' : ''}`}
       style={groupStyle}
       data-drop={dropHint}
       data-shared-directory={sharedDirectory ? 'true' : undefined}
       data-resizing={resizing ? 'true' : undefined}
+      title={sharedDirectory ? `Double-click to start a session in ${sharedDirectory}` : undefined}
+      onDoubleClick={handleGroupDoubleClick}
     >
       {/* Edge handle: only the ring's stroke takes pointer events; `nodrag` stops
           React Flow from moving the group while resizing. */}

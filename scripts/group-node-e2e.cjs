@@ -146,6 +146,34 @@ async function rendererTest(repositoryRoot) {
   assert.equal(groupNode().width, 400, 'moving after release does not resize');
   results.edgeResize = true;
 
+  // Double-click: starts a session in the shared directory, where the circle was clicked.
+  const created = [];
+  window.agentPlex.createSession = (cwd, cli) => {
+    created.push([cwd, cli]);
+    return Promise.resolve({ ...session(`new-${created.length}`, cwd), cli, pid: 1, startedAt: Date.now() });
+  };
+  assert.ok(!circle().classList.contains('nopan'), 'without a shared directory the canvas still zooms on double-click');
+  fire(circle(), 'dblclick', { clientX: 300, clientY: 260 });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.deepEqual(created, [], 'no shared directory, no session');
+
+  useAppStore.setState({ sessions: { ...useAppStore.getState().sessions, b: { ...session('b', 'C:\\work\\app\\'), cli: 'claude-resume' } } });
+  await wait(() => circle().classList.contains('nopan'), 'double-click zoom turned off for shared-directory groups');
+  fire(host.querySelector('.graph-group__label'), 'dblclick', { clientX: 250, clientY: 90 });
+  await wait(() => host.querySelector('.graph-group__label input'), 'the label still renames on double-click');
+  fire(host.querySelector('.graph-group__label input'), 'keydown', { key: 'Escape' });
+  assert.deepEqual(created, [], 'renaming does not start a session');
+
+  fire(circle(), 'dblclick', { clientX: 300, clientY: 260 });
+  fire(circle(), 'dblclick', { clientX: 300, clientY: 260 });
+  await wait(() => useAppStore.getState().nodes.find(n => n.id === 'new-1')?.parentId === 'g', 'new session joins the group');
+  assert.deepEqual(created, [['C:\\work\\app', 'claude']], 'one session, in the directory, with the members\' CLI');
+  const group = groupNode(), card = useAppStore.getState().nodes.find(n => n.id === 'new-1');
+  // (300, 260) is 200, 160 into the circle's box; the card is centred there.
+  assert.deepEqual({ x: group.position.x + card.position.x, y: group.position.y + card.position.y },
+    { x: -50 + 200 - 90, y: -50 + 160 - 28 });
+  results.doubleClickStartsSession = true;
+
   reactRoot.unmount();
   return results;
 }

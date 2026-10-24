@@ -236,3 +236,34 @@ test('join and leave outline colors are theme tokens defined for both themes', (
   assert.match(css, /--color-join-group:\s*var\(--join-group\)/);
   assert.match(css, /--color-leave-group:\s*var\(--leave-group\)/);
 });
+
+test('groupSessionCli picks the CLI every member uses, counting resumes as new sessions, else Claude', () => {
+  withStore(({ store }) => {
+    const cli = (...clis) => {
+      const sessions = Object.fromEntries(clis.map((c, i) => [`s${i}`, { ...session(`s${i}`), cli: c }]));
+      const nodes = [
+        { id: 'g', type: 'groupNode', position: { x: 0, y: 0 }, data: {} },
+        ...clis.map((_, i) => ({ id: `s${i}`, type: 'sessionNode', parentId: 'g', position: { x: 0, y: 0 }, data: { sessionId: `s${i}` } })),
+      ];
+      return store.groupSessionCli(nodes, sessions, 'g');
+    };
+    assert.equal(cli('copilot', 'copilot-resume'), 'copilot');
+    assert.equal(cli('claude-resume'), 'claude');
+    assert.equal(cli('pwsh', 'pwsh'), 'pwsh', 'shell groups start another shell');
+    assert.equal(cli('codex', 'claude'), 'claude', 'mixed groups fall back to Claude');
+    assert.equal(cli(), 'claude');
+  });
+});
+
+test('addToGroup can centre the joining card on a canvas point', () => {
+  withStore(({ useAppStore, addSessions, node, group }) => {
+    addSessions('a', 'b');
+    useAppStore.getState().createGroupWithMembers(['a']);
+    const g = group();
+    const point = centerOf(g);
+    useAppStore.getState().addToGroup(g.id, 'b', { center: point });
+    const nodes = useAppStore.getState().nodes;
+    assert.equal(node('b').parentId, g.id);
+    assert.deepEqual(absolute(nodes, 'b'), { x: point.x - 120, y: point.y - 60 });
+  });
+});
