@@ -320,6 +320,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 [data-theme="light"] .graph-group { border-style: dashed; }
 
+/* The group being dragged fills with its own color so it stands out from the others. */
+.graph-group[data-dragging="true"] {
+  background: color-mix(in srgb, var(--group-color) 16%, transparent);
+  border-color: var(--group-color);
+}
+
 /* Drag preview: releasing now would add the session to (join) or remove it from (leave) this group. */
 .graph-group[data-drop="join"],
 .graph-group[data-drop="leave"] {

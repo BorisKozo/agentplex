@@ -6,8 +6,8 @@ if (!root || !fs.existsSync(root)) throw new Error('Run through scripts/run-git-
 app.setPath('userData', path.join(root, 'profile'));
 app.disableHardwareAcceleration();
 
-// Renders the real GroupNode circle and checks its drop outline, shared-directory
-// line, color picker and edge resize.
+// Renders the real GroupNode circle and checks its drop outline, dragging fill,
+// shared-directory line, color picker and edge resize.
 async function rendererTest(repositoryRoot) {
   const assert = require('node:assert/strict');
   const path = require('node:path');
@@ -49,7 +49,7 @@ async function rendererTest(repositoryRoot) {
   });
 
   const reactRoot = createRoot(host);
-  const render = () => reactRoot.render(React.createElement(GroupNode, { id: 'g', data: groupNode().data }));
+  const render = (props = {}) => reactRoot.render(React.createElement(GroupNode, { id: 'g', data: groupNode().data, ...props }));
   const wait = async (predicate, label) => {
     const deadline = Date.now() + 10000;
     while (!predicate()) {
@@ -79,6 +79,14 @@ async function rendererTest(repositoryRoot) {
   await wait(() => circle().dataset.drop === undefined, 'no outline for another group');
   useAppStore.getState().setGroupDragHint(null);
   results.dropOutline = true;
+
+  // Dragging the group itself marks the circle, which the CSS fills with the group color.
+  assert.equal(circle().dataset.dragging, undefined);
+  render({ dragging: true });
+  await wait(() => circle().dataset.dragging === 'true', 'dragging state');
+  render();
+  await wait(() => circle().dataset.dragging === undefined, 'dragging state ends on release');
+  results.draggingFill = true;
 
   // Shared directory: shown under the name while every member works in it.
   const directory = () => host.querySelector('.graph-group__directory');
