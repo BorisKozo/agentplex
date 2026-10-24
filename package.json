@@ -11,7 +11,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AlexPeppas/agentplex.git"
+    "url": "https://github.com/BorisKozo/agentplex.git"
   },
   "packageManager": "pnpm@10.33.0",
   "engines": {
