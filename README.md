@@ -320,6 +320,7 @@ agentplex/
 │   ├── renderer/
 │   │   ├── App.tsx                    # Root component; subscribes to IPC events
 │   │   ├── store.ts                   # Zustand store: sessions, nodes, edges, plans, tasks
+│   │   ├── group-drop.ts              # What dropping a dragged card does to groups
 │   │   ├── components/
 │   │   │   ├── GraphCanvas.tsx        # React Flow canvas
 │   │   │   ├── SessionNode.tsx        # Session card with send/duplicate/rename/delete actions

@@ -46,6 +46,8 @@ function renderCanvas(store) {
   const useAppStore = Object.assign(select => select(real.getState()), {
     getState: real.getState, setState: real.setState, subscribe: real.subscribe,
   });
+  const storeModule = { ...store, useAppStore };
+  const groupDrop = loadSource('src/renderer/group-drop.ts', { './store': storeModule });
   const canvas = loadSource('src/renderer/components/GraphCanvas.tsx', {
     react: { useCallback: fn => fn, useEffect: effect => effects.push(effect) },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
@@ -56,11 +58,11 @@ function renderCanvas(store) {
     '@xyflow/react/dist/style.css': {},
     './SessionNode': { SessionNode: 'SessionNode' }, './GroupNode': { GroupNode: 'GroupNode' },
     './SubAgentNode': { SubAgentNode: 'SubAgentNode' }, './DrawingOverlay': { DrawingOverlay: 'DrawingOverlay' },
-    '../store': { ...store, useAppStore },
+    '../store': storeModule, '../group-drop': groupDrop,
   });
   const tree = canvas.GraphCanvas();
   const flow = [tree.props.children].flat().find(child => child?.type === 'ReactFlow');
-  return { resolveDrop: canvas.resolveDrop, props: flow.props, effects, applied };
+  return { resolveDrop: groupDrop.resolveDrop, props: flow.props, effects, applied };
 }
 
 // One group holding `a`, with `b` and `c` ungrouped and far away from it.
