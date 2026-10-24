@@ -161,9 +161,10 @@ pnpm dev
 Restarting the main process ends every running CLI session. Saved sessions are
 restored on startup, but their terminals start fresh.
 
-The first `pnpm dev` in a checkout pre-bundles dependencies and can show a blank
-window while that runs; reload the window once it finishes. If an edit doesn't
-show up, the file watcher may have missed it: save the file again.
+The window reloads itself right after launch (Forge's preload build sends a
+reload) and whenever Vite asks for one, such as after pre-bundling dependencies
+on the first `pnpm dev` in a checkout. If an edit doesn't show up, the file
+watcher may have missed it: save the file again.
 
 ### Checks and tests
 

@@ -32,6 +32,7 @@ Multi-session desktop orchestrator for Claude, Copilot, Codex, and shell session
 - `src/main/claude-session-scanner.ts`: Claude project/session discovery + transcript rendering
 - `src/main/copilot-session-scanner.ts`: Copilot project/session discovery + transcript rendering
 - `src/main/ipc-handlers.ts`: renderer bridge for sessions, launcher, git, settings, templates
+- `src/main/preview-navigation.ts`: navigation guard on the main window. It denies new windows, blocks every page-initiated navigation except reloading the app page itself, and limits subframes to `about:srcdoc`/`about:blank`. The reload exception matters in dev: Forge sends Vite a `full-reload` when the preload builds, including right after launch, and cancelling that reload mid-load left the window empty. Covered by `scripts/preview-navigation.test.cjs`.
 
 ## UI Data Flow
 
