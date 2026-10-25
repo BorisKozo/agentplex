@@ -4,10 +4,10 @@ Multi-session desktop orchestrator for Claude, Copilot, Codex, and shell session
 
 ## Stack
 
-- Electron 41, Node.js 20+
+- Electron 45, Node.js 22.13+ (required by Electron Forge 8). Electron 45's main-process `clipboard` API is async (`readText`/`writeText` return promises; `read`/`write` take `ClipboardItem`s), so await it. The Electron package downloads its binary the first time `require('electron')` runs, not at install.
 - React 19, React Flow 12, Zustand 5, Tailwind 4, xterm.js 6
 - node-pty for terminal sessions
-- Vite 8, TypeScript 6, electron-forge 7, pnpm 10
+- Vite 8, TypeScript 6, electron-forge 8, pnpm 10. Forge 8's Vite plugin emits `.vite/build/main.cjs` and `preload.cjs`, so `package.json` `main`, the preload path in `main.ts` and `scripts/startup-cache.mjs` all use `.cjs`.
 
 ## Runtime Architecture
 
@@ -55,7 +55,7 @@ Multi-session desktop orchestrator for Claude, Copilot, Codex, and shell session
 ```bash
 pnpm install
 pnpm start          # production build, reused until sources change
-pnpm dev            # live reload; type `rs` in its terminal to restart the main process
+pnpm dev            # live reload; press `r` in its terminal to restart the main process
 pnpm lint
 pnpm test           # node:test suites in scripts/*.test.cjs
 pnpm exec tsc --noEmit
@@ -63,6 +63,12 @@ node scripts/run-git-editor-e2e.cjs <script>   # Electron e2e, e.g. send-dialog-
 pnpm package
 pnpm make
 ```
+
+## Dependency notes
+
+- `pnpm.overrides` in `package.json` pins `monaco-editor>dompurify` to `^3.4.17`, because Monaco's own pin has known DOMPurify advisories. Drop it once Monaco ships a fixed version.
+- `pnpm.onlyBuiltDependencies` must include `electron-winstaller`: its install script creates the `7z.exe` that Squirrel needs, and without it `pnpm make` fails with "The system cannot find the file specified".
+- `pnpm audit` should report no known vulnerabilities. Check it after dependency changes.
 
 ## Documentation
 

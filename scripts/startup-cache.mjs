@@ -40,7 +40,7 @@ async function outputSnapshot(root) {
   const directories = [path.join(root, '.vite', 'build'), path.join(root, '.vite', 'renderer')];
   try {
     const files = (await Promise.all(directories.map(filesIn))).flat().sort();
-    for (const required of ['build/main.js', 'build/preload.js', 'renderer/main_window/index.html']) {
+    for (const required of ['build/main.cjs', 'build/preload.cjs', 'renderer/main_window/index.html']) {
       await fs.access(path.join(root, '.vite', required));
     }
     return await Promise.all(files.map(async filename => {
@@ -123,10 +123,10 @@ export async function buildStartupApp(root) {
         resolve: { conditions: ['node'], mainFields: ['module', 'jsnext:main', 'jsnext'] },
         build: {
           outDir: '.vite/build', emptyOutDir: false, copyPublicDir: false, minify: false,
-          ...(preload ? {} : { lib: { entry: target.entry, fileName: () => '[name].js', formats: ['cjs'] } }),
+          ...(preload ? {} : { lib: { entry: target.entry, fileName: () => '[name].cjs', formats: ['cjs'] } }),
           rollupOptions: { external, ...(preload ? { input: target.entry,
-            output: { format: 'cjs', inlineDynamicImports: true, entryFileNames: '[name].js',
-              chunkFileNames: '[name].js', assetFileNames: '[name].[ext]' } } : {}) },
+            output: { format: 'cjs', inlineDynamicImports: true, entryFileNames: '[name].cjs',
+              chunkFileNames: '[name].cjs', assetFileNames: '[name].[ext]' } } : {}) },
         },
       }, user.config));
     }),

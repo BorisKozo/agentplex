@@ -36,7 +36,7 @@ export function registerIpcHandlers() {
   ipcMain.handle(IPC.CLIPBOARD_WRITE, (event, text: string) => {
     if (event.senderFrame !== event.sender.mainFrame) throw new Error('Clipboard access requires the application frame');
     if (typeof text !== 'string') throw new Error('Clipboard text must be a string');
-    clipboard.writeText(text);
+    return clipboard.writeText(text);
   });
   ipcMain.handle(IPC.CLIPBOARD_READ, event => {
     if (event.senderFrame !== event.sender.mainFrame) throw new Error('Clipboard access requires the application frame');
