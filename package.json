@@ -4,7 +4,7 @@
   "version": "1.6.0",
   "description": "Multi-session Claude CLI desktop app with graph visualization",
   "author": "Alexandros Peppas",
-  "main": ".vite/build/main.js",
+  "main": ".vite/build/main.cjs",
   "bin": {
     "agentplex": "bin/agentplex.mjs"
   },
@@ -15,11 +15,15 @@
   },
   "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "pnpm": {
+    "overrides": {
+      "monaco-editor>dompurify": "^3.4.17"
+    },
     "onlyBuiltDependencies": [
       "electron",
+      "electron-winstaller",
       "node-pty",
       "puppeteer",
       "sharp"
@@ -50,19 +54,18 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.11.1",
-    "@electron-forge/maker-squirrel": "^7.11.1",
-    "@electron-forge/maker-zip": "^7.11.1",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
-    "@electron-forge/plugin-vite": "^7.11.1",
+    "@electron-forge/cli": "^8.0.1",
+    "@electron-forge/maker-squirrel": "^8.0.1",
+    "@electron-forge/maker-zip": "^8.0.1",
+    "@electron-forge/plugin-vite": "^8.0.1",
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "electron": "^41.0.4",
+    "electron": "^45.0.0",
     "eslint": "^10.1.0",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.5",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.57.2",
     "vite": "^8.0.16"

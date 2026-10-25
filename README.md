@@ -111,11 +111,14 @@ that session's artifact directory. To compare changes, use the session's Git tab
 
 ## Dev Requirements
 
-Building from source requires [Node.js](https://nodejs.org/) 20+ and native build tools for `node-pty`:
+Building from source requires [Node.js](https://nodejs.org/) 22.13+ (Electron Forge 8's minimum) and native build tools for `node-pty`:
 
 - **Windows**: [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with "Desktop development with C++"
 - **macOS**: `xcode-select --install`
 - **Linux**: `sudo apt install build-essential python3`
+
+The app runs on Electron 45. Its binary isn't fetched during `pnpm install`; the
+first `pnpm start` or `pnpm dev` downloads it.
 
 pnpm is pinned via `packageManager` in package.json. If you have [corepack](https://nodejs.org/api/corepack.html) enabled (`corepack enable`), it will auto-install the correct version. Otherwise install pnpm directly: `npm install -g pnpm`.
 
@@ -135,7 +138,7 @@ pnpm dev
 | --- | --- |
 | Renderer (`src/renderer/**`, `styles/`) | Hot-reloads in place |
 | Preload (`src/preload/preload.ts`) | The window reloads automatically |
-| Main process (`src/main/**`) | Rebuilt, then type `rs` in the dev terminal to restart |
+| Main process (`src/main/**`) | Rebuilt, then press `r` in the dev terminal to restart (type `rs` and Enter when Forge prints plain output) |
 
 Restarting the main process ends every running CLI session. Saved sessions are
 restored on startup, but their terminals start fresh.

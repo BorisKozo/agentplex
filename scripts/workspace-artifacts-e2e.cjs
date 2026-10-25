@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, clipboard, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, session, clipboard, ClipboardItem, Menu } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -41,6 +41,14 @@ const wait = async (predicate, label) => {
   }
 };
 const evaluate = expression => win.webContents.executeJavaScript(expression);
+// Electron 45's clipboard API is async; save and restore the user's clipboard around each probe.
+// Items from clipboard.read() can't be written back, so copy their payloads into new ones.
+const saveClipboard = async () => Promise.all((await clipboard.read()).filter(item => item.types.length).map(async item =>
+  new ClipboardItem(Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)]))))));
+const restoreClipboard = async items => {
+  clipboard.clear();
+  if (items.length) await clipboard.write(items).catch(error => console.warn('[e2e] Could not restore the clipboard:', error));
+};
 const clickText = async (text, scope = 'document') => {
   await evaluate(`(() => {
     const button = [...${scope}.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(text)});
@@ -155,7 +163,7 @@ app.whenReady().then(async () => {
   win = new BrowserWindow({ show: false, width: 1400, height: 1000,
     ...(process.platform === 'win32' ? { titleBarStyle: 'hidden',
       titleBarOverlay: { height: 48, color: '#181c20', symbolColor: '#e4e8ed' } } : {}),
-    webPreferences: { preload: path.join(repository, '.vite', 'build', 'preload.js'),
+    webPreferences: { preload: path.join(repository, '.vite', 'build', 'preload.cjs'),
       nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false, offscreen: true } });
   loadSource('src/main/preview-navigation.ts').installPreviewNavigation(win.webContents);
   win.webContents.on('console-message', event => {
@@ -165,14 +173,13 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'Edit', submenu: [{ role: 'copy' }, { role: 'paste' }] }]));
   await win.loadFile(path.join(rendererRoot, '.vite', 'renderer', 'main_window', 'index.html'));
   await wait(() => evaluate(`!!document.querySelector('.react-flow')`), 'full production renderer');
-  const clipboardBefore = clipboard.availableFormats().map(format => [format, clipboard.readBuffer(format)]);
+  const clipboardBefore = await saveClipboard();
   try {
     await evaluate(`window.agentPlex.clipboardWriteText('AGENTPLEX_CLIPBOARD_PROBE')`);
-    assert.equal(clipboard.readText(), 'AGENTPLEX_CLIPBOARD_PROBE', 'sandboxed preload must write the native clipboard');
+    assert.equal(await clipboard.readText(), 'AGENTPLEX_CLIPBOARD_PROBE', 'sandboxed preload must write the native clipboard');
     assert.equal(await evaluate(`window.agentPlex.clipboardReadText()`), 'AGENTPLEX_CLIPBOARD_PROBE');
   } finally {
-    clipboard.clear();
-    for (const [format, bytes] of clipboardBefore) clipboard.writeBuffer(format, bytes);
+    await restoreClipboard(clipboardBefore);
   }
   await setTheme('light');
   await win.loadFile(path.join(rendererRoot, '.vite', 'renderer', 'main_window', 'index.html'));
@@ -230,10 +237,10 @@ app.whenReady().then(async () => {
     }
     throw new Error('No terminal text available to copy');
   })()`);
-  const savedClipboard = clipboard.availableFormats().map(format => [format, clipboard.readBuffer(format)]);
+  const savedClipboard = await saveClipboard();
   try {
     for (const modifiers of [['control'], ['control', 'shift'], null]) {
-      clipboard.writeText('AGENTPLEX_COPY_NOT_YET');
+      await clipboard.writeText('AGENTPLEX_COPY_NOT_YET');
       win.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, x: selectedText.x, y: selectedText.y });
       win.webContents.sendInputEvent({ type: 'mouseMove', x: selectedText.endX, y: selectedText.y, modifiers: ['leftButtonDown'] });
       win.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, x: selectedText.endX, y: selectedText.y });
@@ -245,11 +252,10 @@ app.whenReady().then(async () => {
         win.webContents.sendInputEvent({ type: 'mouseDown', button: 'right', clickCount: 1, ...point });
         win.webContents.sendInputEvent({ type: 'mouseUp', button: 'right', clickCount: 1, ...point });
       }
-      await wait(() => clipboard.readText() === selectedText.text, 'native keyboard copies mouse-selected terminal text with the application Edit menu');
+      await wait(async () => await clipboard.readText() === selectedText.text, 'native keyboard copies mouse-selected terminal text with the application Edit menu');
     }
   } finally {
-    clipboard.clear();
-    for (const [format, bytes] of savedClipboard) clipboard.writeBuffer(format, bytes);
+    await restoreClipboard(savedClipboard);
   }
   win.setContentSize(900, 1000);
   await wait(() => evaluate(`getComputedStyle(document.querySelector('aside[aria-label="Workspace files"]')).display === 'none'`), 'narrow panes preserve terminal space');
@@ -328,19 +334,18 @@ app.whenReady().then(async () => {
   await wait(() => evaluate(`!!document.querySelector('[data-id="${clipboardProbe.id}"]')`), 'test-owned writable session');
   await evaluate(`document.querySelector('[data-id="${clipboardProbe.id}"] > div').click()`);
   await wait(() => evaluate(`!!document.querySelector('.xterm-rows')?.textContent.includes('CLI clipboard output test')`), 'test-owned writable terminal');
-  const beforeCliCopy = clipboard.availableFormats().map(format => [format, clipboard.readBuffer(format)]);
+  const beforeCliCopy = await saveClipboard();
   try {
-    clipboard.writeText('NOT_YET_COPIED_BY_CLI');
+    await clipboard.writeText('NOT_YET_COPIED_BY_CLI');
     const expected = 'Copilot native copy: Ελληνικά 😀';
     const sequence = '\x1b]52;c;' + Buffer.from(expected).toString('base64') + '\x07';
     for (const data of [sequence.slice(0, 12), sequence.slice(12)]) {
       manager.appendOutput(clipboardProbe, data);
       manager.send(IPC.SESSION_DATA, { id: clipboardProbe.id, data, offset: clipboardProbe.outputOffset });
     }
-    await wait(() => clipboard.readText() === expected, 'CLI output writes the OS clipboard through the real sandboxed renderer and preload');
+    await wait(async () => await clipboard.readText() === expected, 'CLI output writes the OS clipboard through the real sandboxed renderer and preload');
   } finally {
-    clipboard.clear();
-    for (const [format, bytes] of beforeCliCopy) clipboard.writeBuffer(format, bytes);
+    await restoreClipboard(beforeCliCopy);
     manager.sessions.delete(clipboardProbe.id);
     manager.send(IPC.SESSION_REMOVED, { id: clipboardProbe.id });
   }
